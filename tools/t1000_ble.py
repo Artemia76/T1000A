@@ -22,6 +22,10 @@ GUS_RX   = 'a6ed0203' + GOODIX   # écriture PC -> appareil
 OTA_TX   = 'a6ed0402' + GOODIX
 OTA_RX   = 'a6ed0403' + GOODIX
 OTA_CTRL = 'a6ed0404' + GOODIX
+# Variante du bootloader Seeed (SENSECAP_GR_DFU_xxxx), relevée sur le boîtier :
+# service a6ed0701, 0702 = write-without-response + notify, 0703 = write-without-response
+SEEED_OTA_A = 'a6ed0702' + GOODIX
+SEEED_OTA_B = 'a6ed0703' + GOODIX
 
 # Firmware Seeed d'origine : service « Transparent UART » Microchip/ISSC, canal des commandes AT
 SEEED_SVC = '49535343-fe7d-4ae5-8fa9-9fafd205e455'
@@ -151,20 +155,36 @@ class GoodixDfu:
             self.frames.put_nowait((typ, body))
 
     async def start(self):
+        if self.c.services.get_characteristic(SEEED_OTA_A) is not None:
+            self.tx, self.rx_candidates = SEEED_OTA_A, [SEEED_OTA_B, SEEED_OTA_A]
+            print('bootloader Seeed : service a6ed0701')
+            await self.c.start_notify(self.tx, self._on_notify)
+            return
+        self.tx, self.rx_candidates = OTA_TX, [OTA_RX]
         if self.c.services.get_characteristic(OTA_TX) is None:
             for sv in self.c.services:
                 print(f'service {sv.uuid}')
                 for ch in sv.characteristics:
                     print(f'   car {ch.uuid} {",".join(ch.properties)}')
             raise DfuError('service OTA Goodix absent (voir la liste ci-dessus)')
-        await self.c.start_notify(OTA_TX, self._on_notify)
+        await self.c.start_notify(self.tx, self._on_notify)
 
     async def send(self, typ, data=b''):
         hdr = struct.pack('<HH', typ, len(data))
         frame = b'\x44\x47' + hdr + data + struct.pack('<H', (sum(hdr) + sum(data)) & 0xFFFF)
         mtu = max(20, self.c.mtu_size - 3)
         for i in range(0, len(frame), mtu):
-            await self.c.write_gatt_char(OTA_RX, frame[i:i + mtu], response=False)
+            await self.c.write_gatt_char(self.rx_candidates[0], frame[i:i + mtu], response=False)
+
+    async def probe(self):
+        """GET_INFO (lecture seule) en essayant chaque caractéristique d'écriture candidate."""
+        for rx in list(self.rx_candidates):
+            self.rx_candidates = [rx] + [r for r in self.rx_candidates if r != rx]
+            try:
+                return await self.request(self.GET_INFO)
+            except DfuError as e:
+                print(f'pas de réponse via {rx[:8]} ({e})')
+        raise DfuError('GET_INFO sans réponse sur toutes les caractéristiques')
 
     async def request(self, typ, data=b'', timeout=4.0):
         await self.send(typ, data)
@@ -198,7 +218,8 @@ async def cmd_flash(a):
     async with disconnecting(c):
         d = GoodixDfu(c)
         await d.start()
-        info = await d.request(d.GET_INFO)
+        info = await d.probe()
+        print(f'écriture via {d.rx_candidates[0][:8]}, notifications via {d.tx[:8]}')
         dfu_ver = info[17] if len(info) > 17 else 0
         print(f'GET_INFO ok (version DFU {dfu_ver}) : {info.hex()}')
 
@@ -218,6 +239,9 @@ async def cmd_flash(a):
                 sys.exit(f'adresse annoncée {save_addr:#x} inattendue : abandon par sécurité')
             if run_in_app:
                 sys.exit('l\'appareil n\'est pas en mode bootloader DFU : abandon')
+            if a.dry_run:
+                print('--dry-run : arrêt avant toute commande modifiante (le bootloader repart seul après 3 min)')
+                return
             await d.send(d.DFU_MODE_SET, b'\x02')          # non-copy (simple banque), pas de réponse
             await asyncio.sleep(0.2)
         if boot_load + boot_bin + 48 >= save_addr:
