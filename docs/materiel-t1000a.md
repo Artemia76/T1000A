@@ -150,6 +150,9 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | `hello-0.2` (quartz 32 kHz comme Seeed) | **OK** : annonce BLE `T1000A-Test` (adresse FD:28:17:38:7A:8F, différente de celle du firmware Seeed), console GUS, `ble_etape=3`, `ble_err=0`, LED 3 flashs. Défaut console : réponses perdues ou en double. |
 | 2026-11-12 | Cycle normal `dfu` (console) → bootloader → flash `hello-0.3` | **OK** (`flash --enter-dfu T1000A-Test`), somme vérifiée. Console 0.3 : 4 commandes d'affilée, 4 réponses. Bouton lu à 0 au repos sur AON0. |
 | 2026-11-12 | Bouton maintenu 6 s (`hello-0.3`) | **OK** : LED allumée pendant l’appui puis DFU. Bouton confirmé sur AON0, actif à l’état haut. |
+| 2026-11-12 | `hello-0.4` : `lr init` (RadioLib) | Redémarrage sans trace (cause non établie : pas encore de diagnostic). |
+| 2026-11-12 | `hello-0.5` : diagnostic persistant | `lr init` → fil d'Ariane `[10, 11]` : `delay()` appelé avant l'activation du compteur DWT, boucle infinie puis chien de garde. Reproduit ensuite à l'identique dans l'émulateur corrigé (S14). |
+| 2026-11-12 | `hello-0.6` : **LR1110 opérationnel** | `lr init` complet (étapes 10…29), `getVersionInfo` : matériel 0x22, type 0x01 (LR1110), firmware **3.7**. SPI 4 MHz, TCXO 3,0 V, DC/DC, GPIO14 à 1, BUSY=0 au repos. RSSI au repos −127,5 dBm. |
 
 ### Analyse de l'échec de `hello-0.1`
 
