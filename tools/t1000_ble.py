@@ -35,14 +35,16 @@ SEEED_RX  = '49535343-8841-43f4-a8d4-ecbe34729bb3'   # écriture PC -> appareil
 APP_LOAD_ADDR = 0x0101B000      # seule adresse acceptée pour une application T1000-A
 
 
-async def wait_for(name_prefix, timeout):
-    """Attend un appareil dont le nom commence par name_prefix ; renvoie (device, adv)."""
-    print(f'attente de « {name_prefix}… » ({timeout:.0f} s)…', flush=True)
+async def wait_for(name_prefix, timeout, address=None):
+    """Attend un appareil dont le nom contient name_prefix, ou d'adresse `address`
+    (le cache BlueZ peut garder l'ancien nom quand le boîtier passe en DFU)."""
+    print(f'attente de « {name_prefix}… »{" ou " + address if address else ""} ({timeout:.0f} s)…', flush=True)
     found = asyncio.get_running_loop().create_future()
 
     def cb(dev, adv):
         n = adv.local_name or dev.name or ''
-        if name_prefix.lower() in n.lower() and not found.done():
+        hit = name_prefix.lower() in n.lower() or (address and dev.address.upper() == address.upper())
+        if hit and not found.done():
             found.set_result((dev, adv))
 
     async with BleakScanner(cb):
@@ -65,12 +67,12 @@ async def disconnecting(c):
             await c.disconnect()
 
 
-async def connect(name, timeout):
+async def connect(name, timeout, address=None):
     """Attend l'appareil puis s'y connecte, en réessayant tant que le délai n'est pas écoulé :
     BlueZ échoue souvent au premier essai (br-connection-canceled) sur une fenêtre d'annonce courte."""
     deadline = time.time() + timeout
     while True:
-        dev, adv = await wait_for(name, max(1.0, deadline - time.time()))
+        dev, adv = await wait_for(name, max(1.0, deadline - time.time()), address)
         print(f'trouvé : {adv.local_name} {dev.address} rssi={adv.rssi} services_pub={adv.service_uuids}',
               flush=True)
         c = BleakClient(dev, timeout=10)
@@ -327,10 +329,13 @@ async def cmd_flash(a):
     img_info = tail[:40]          # dfu_image_info_t : pattern, version, boot_info (24), comments (12)
     print(f'image : {len(img)} octets, commentaire « {tail[28:40].split(bytes(1))[0].decode()} »')
 
+    address = None
     if a.enter_dfu:
-        await at_session(a.enter_dfu, ['AT+DFU_ENTER'], a.t)
+        address = await at_session(a.enter_dfu, ['AT+DFU_ENTER'], a.t)
         print('le boîtier redémarre en bootloader DFU…')
-    c, adv = await connect(a.name, a.t)
+        await asyncio.sleep(3.0)          # laisser le firmware Seeed redémarrer (≈1,2 s)
+        bluez_forget(address)
+    c, adv = await connect(a.name, a.t, address)
     async with disconnecting(c):
         with contextlib.suppress(Exception):
             await c._backend._acquire_mtu()            # BlueZ : MTU réellement négocié
@@ -390,8 +395,15 @@ async def cmd_flash(a):
 
 # ---------------------------------------------------------------- AT (firmware Seeed)
 
+def bluez_forget(address):
+    """Retire l'appareil du cache BlueZ (nom, services) pour qu'il soit redécouvert tel quel."""
+    import subprocess
+    subprocess.run(['bluetoothctl', 'remove', address], capture_output=True, timeout=10)
+
+
 async def at_session(name, cmds, timeout):
     c, adv = await connect(name, timeout)
+    address = c.address
     try:
         await c.start_notify(SEEED_TX, lambda _h, d: print(d.decode(errors='replace'), end='', flush=True))
         for cmd in cmds:
@@ -405,6 +417,7 @@ async def at_session(name, cmds, timeout):
             await c.disconnect()
         except Exception:
             pass                      # normal après AT+DFU_ENTER (redémarrage)
+    return address
 
 
 async def cmd_at(a):
