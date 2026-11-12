@@ -73,6 +73,14 @@ static uint32_t s_last_poll_ms;
 
 static void on_irq(void) { s_irq = true; s_irq_hits++; }
 
+/* Photographie des niveaux de toutes les broches : GPIO 0..31 (bits 0..31) et AON 0..7 (renvoyé à part). */
+static void pins_snapshot(uint32_t *gpio, uint32_t *aon)
+{
+    *gpio = 0; *aon = 0;
+    for (uint32_t i = 0; i < 32; i++) if (s_hal->digitalRead(i)) *gpio |= 1u << i;
+    for (uint32_t i = 0; i < 8; i++)  if (s_hal->digitalRead(0x20 + i)) *aon |= 1u << i;
+}
+
 extern "C" int radio_active(void) { return s_radio != nullptr; }
 
 static void radio_create(void)
@@ -205,6 +213,15 @@ extern "C" void radio_poll(void)
         }
         if (!rx_done) return;
         s_n_polled_rx++;
+        /* L'IRQ du LR1110 est active : on photographie les broches, on acquitte, on rephotographie.
+         * La broche qui change est la ligne d'interruption (et sa polarité). */
+        uint32_t g1, a1, g2, a2;
+        pins_snapshot(&g1, &a1);
+        s_radio->clearIrqState(RADIOLIB_LR11X0_IRQ_ALL);
+        pins_snapshot(&g2, &a2);
+        console_printf("IRQ active : gpio=%08lx aon=%02lx | apres acquit : gpio=%08lx aon=%02lx | diff gpio=%08lx aon=%02lx\r\n",
+                       (unsigned long)g1, (unsigned long)a1, (unsigned long)g2, (unsigned long)a2,
+                       (unsigned long)(g1 ^ g2), (unsigned long)(a1 ^ a2));
     }
     s_irq = false;
     uint8_t buf[256];
