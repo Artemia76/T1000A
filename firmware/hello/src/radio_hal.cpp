@@ -90,9 +90,23 @@ void GR5515Hal::detachInterrupt(uint32_t interruptNum)
 
 static uint32_t s_cyc_last;
 static uint64_t s_cyc_total;
+static bool     s_dwt_on;
+
+/* Le SDK laisse le compteur DWT désactivé hors de ses propres attentes : on prend une référence
+ * permanente (hal_dwt_enable, compteur de références) dès la première mesure du temps, quel que soit
+ * l'ordre des appels. Sans cela, delay() bouclerait indéfiniment (essai 0.5 sur le boîtier). */
+static void dwt_ensure(void)
+{
+    if (!s_dwt_on) {
+        hal_dwt_enable();
+        s_cyc_last = DWT->CYCCNT;
+        s_dwt_on = true;
+    }
+}
 
 static uint64_t cycles(void)
 {
+    dwt_ensure();
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
     uint32_t now = DWT->CYCCNT;
@@ -105,11 +119,7 @@ static uint64_t cycles(void)
 
 void GR5515Hal::init()
 {
-    /* Référence permanente sur le compteur DWT du SDK (comptage de références) : aucun pilote
-     * ne pourra le désactiver en sortie de hal_dwt_disable(). */
-    hal_dwt_enable();
-    s_cyc_last = DWT->CYCCNT;
-    s_cyc_total = 0;
+    dwt_ensure();
     spiBegin();
 }
 

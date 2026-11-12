@@ -80,7 +80,7 @@ static void radio_create(void)
 }
 
 /* Fil d'Ariane (commande diag après un redémarrage) :
- * 10 début, 11 objets créés, 12 GPIO14 à 1, 13 HAL init (SPI), 14 état des broches lu,
+ * 10 début, 11 objets créés, 12 HAL init (temps, SPI), 13 GPIO14 à 1, 14 état des broches lu,
  * 20 begin lancé, 21 begin OK, 22 DCDC, 23 CRC, 24 en-tête, 25 gain RX, 29 terminé ; 9x = erreur. */
 static int16_t radio_begin(float mhz, float bw, uint8_t sf, uint8_t cr)
 {
@@ -88,11 +88,11 @@ static int16_t radio_begin(float mhz, float bw, uint8_t sf, uint8_t cr)
     diag_step(10);
     radio_create();
     diag_step(11);
+    s_hal->init();                      /* temps (DWT) et SPI avant toute attente */
+    diag_step(12);
     s_hal->pinMode(PIN_RF_EN, 1);
     s_hal->digitalWrite(PIN_RF_EN, 1);
     s_hal->delay(10);
-    diag_step(12);
-    s_hal->init();
     diag_step(13);
     console_printf("broches : BUSY=%lu IRQ=%lu spi=%d\r\n", (unsigned long)s_hal->digitalRead(PIN_BUSY),
                    (unsigned long)s_hal->digitalRead(PIN_IRQ), s_hal->spiError());
