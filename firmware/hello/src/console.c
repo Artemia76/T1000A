@@ -9,7 +9,7 @@
 #include <string.h>
 
 #define DEVICE_NAME     "T1000A-Test"
-#define FW_VERSION      "hello-0.2"
+#define FW_VERSION      "hello-0.3"
 
 extern uint32_t main_uptime_ms(void);
 
@@ -47,11 +47,17 @@ static int      s_conn_idx = -1;
 static int      s_tx_open;
 static uint16_t s_mtu = 23;
 
+/* Appelé depuis la boucle principale ET depuis les événements BLE : le paquet est réservé
+ * (s_tx_inflight) en section critique avant l'envoi, pour qu'un seul contexte l'émette. */
 static void tx_kick(void)
 {
     static uint8_t chunk[244];
-    if (s_conn_idx < 0 || !s_tx_open || s_tx_inflight || s_tx_head == s_tx_tail) return;
-
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    if (s_conn_idx < 0 || !s_tx_open || s_tx_inflight || s_tx_head == s_tx_tail) {
+        __set_PRIMASK(primask);
+        return;
+    }
     uint16_t max = (uint16_t)(s_mtu - 3);
     if (max > sizeof(chunk)) max = sizeof(chunk);
     uint16_t n = 0;
@@ -60,8 +66,11 @@ static void tx_kick(void)
         chunk[n++] = s_tx_buf[t];
         t = (t + 1) % TX_BUF_SIZE;
     }
-    if (gus_tx_data_send((uint8_t)s_conn_idx, chunk, n) == SDK_SUCCESS) {
-        s_tx_inflight = n;
+    s_tx_inflight = n;
+    __set_PRIMASK(primask);
+
+    if (gus_tx_data_send((uint8_t)s_conn_idx, chunk, n) != SDK_SUCCESS) {
+        s_tx_inflight = 0;                     /* réessai au prochain tx_kick */
     }
 }
 
@@ -88,26 +97,22 @@ void console_printf(const char *fmt, ...)
 
 /* ---- Réception : ligne de commande ------------------------------------- */
 
-#define RX_LINE_MAX 96
-static char     s_rx_line[RX_LINE_MAX];
-static uint32_t s_rx_len;
-static char     s_cmd[RX_LINE_MAX];
-static volatile int s_cmd_ready;
+/* Les octets reçus (contexte BLE) vont dans un anneau ; la boucle principale découpe les lignes
+ * et exécute les commandes. Aucune ligne n'est perdue si plusieurs arrivent d'affilée. */
+#define RX_RING_SIZE 512
+#define RX_LINE_MAX  96
+static uint8_t           s_rx_ring[RX_RING_SIZE];
+static volatile uint16_t s_rx_w, s_rx_r;
+static char              s_rx_line[RX_LINE_MAX];
+static uint32_t          s_rx_len;
 
 static void rx_bytes(const uint8_t *p, uint16_t len)
 {
     for (uint16_t i = 0; i < len; i++) {
-        char c = (char)p[i];
-        if (c == '\r' || c == '\n') {
-            if (s_rx_len && !s_cmd_ready) {
-                s_rx_line[s_rx_len] = 0;
-                memcpy(s_cmd, s_rx_line, s_rx_len + 1);
-                s_cmd_ready = 1;
-            }
-            s_rx_len = 0;
-        } else if (s_rx_len < RX_LINE_MAX - 1) {
-            s_rx_line[s_rx_len++] = c;
-        }
+        uint16_t next = (uint16_t)((s_rx_w + 1) % RX_RING_SIZE);
+        if (next == s_rx_r) break;             /* anneau plein : on perd la fin */
+        s_rx_ring[s_rx_w] = p[i];
+        s_rx_w = next;
     }
 }
 
@@ -165,9 +170,18 @@ static void cmd_exec(char *line)
 
 void console_poll(void)
 {
-    if (s_cmd_ready) {
-        cmd_exec(s_cmd);
-        s_cmd_ready = 0;
+    while (s_rx_r != s_rx_w) {
+        char c = (char)s_rx_ring[s_rx_r];
+        s_rx_r = (uint16_t)((s_rx_r + 1) % RX_RING_SIZE);
+        if (c == '\r' || c == '\n') {
+            if (s_rx_len) {
+                s_rx_line[s_rx_len] = 0;
+                s_rx_len = 0;
+                cmd_exec(s_rx_line);
+            }
+        } else if (s_rx_len < RX_LINE_MAX - 1) {
+            s_rx_line[s_rx_len++] = c;
+        }
     }
     tx_kick();
 }
