@@ -13,6 +13,7 @@ Exemples :
   t1000_ble.py gatt -t 120       puis appui long sur le bouton du T1000-A
   t1000_ble.py flash firmware/hello/build/t1000a_hello_dfu.bin
 """
+import re
 import argparse, asyncio, struct, sys, time
 from bleak import BleakClient, BleakScanner
 
@@ -41,9 +42,12 @@ async def wait_for(name_prefix, timeout, address=None):
     print(f'attente de « {name_prefix}… »{" ou " + address if address else ""} ({timeout:.0f} s)…', flush=True)
     found = asyncio.get_running_loop().create_future()
 
+    by_addr = bool(re.fullmatch(r'([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', name_prefix))   # --name AA:BB:… = adresse
+
     def cb(dev, adv):
         n = adv.local_name or dev.name or ''
-        hit = name_prefix.lower() in n.lower() or (address and dev.address.upper() == address.upper())
+        hit = (dev.address.upper() == name_prefix.upper()) if by_addr else name_prefix.lower() in n.lower()
+        hit = hit or (address and dev.address.upper() == address.upper())
         if hit and not found.done():
             found.set_result((dev, adv))
 
