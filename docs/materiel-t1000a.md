@@ -156,6 +156,8 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | `hello-0.7`/`0.8` : écoute MeshCore EU/UK Narrow (869,618 MHz, BW 62,5, SF 8, CR 8) | **Adverts du Heltec reçus** : 134 octets, en-tête `0x12` (advert flood), RSSI −33 à −38 dBm, SNR +13 à +14,5 dB. Mais uniquement par scrutation : IRQ sur AON1 jamais déclenchée. |
 | 2026-11-12 | `hello-0.9` : test pull-up/pull-down d'AON1 | IRQ active → AON1 à 0 quel que soit le pull ; IRQ acquittée → en l'air. **Ligne active à l'état bas, collecteur ouvert.** |
 | 2026-11-12 | `hello-0.10` : IRQ en pull-up / front descendant | **Réception par interruption OK** (`irq_broche=2`, `rx_par_scrutation=0`). |
+| 2026-11-12 | `blink-0.1` (platform-gr551x, cœur Arduino, PlatformIO) | Retour en DFU en < 1 min (sécurité des 3 démarrages courts). Fil d'Ariane relu avec hello : `64 65` à chaque démarrage → blocage dans `ble_stack_init()`, sans faute enregistrée. Ni l'alignement de la table FPB ni la chaîne de compilation (même échec avec GCC 16) n'en sont la cause. |
+| 2026-11-12 | `blink-0.1` corrigé : code de démarrage relié en dernier | **Croquis Arduino opérationnel** : annonce `T1000A-Arduino`, console (info, btn, led, `Serial` → console), `pio run -t upload` de bout en bout (dfu par la console + FastDfu) en 20 s. |
 
 ### Analyse de l'échec de `hello-0.1`
 
@@ -173,10 +175,29 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 **Leçon** : tout réglage du démarrage (horloges, alimentation, Flash) doit être **identique à celui du firmware Seeed**,
 puisque cette phase précède toute sécurité logicielle. Vérifier ces réglages par rétro-ingénierie avant chaque flash.
 
+### Analyse de l'échec de `blink-0.1` : gestionnaires d'exception restés sur `Default_Handler`
+
+- `startup_gr55xx.s` déclare chaque gestionnaire (`SVC_Handler`, `HardFault_Handler`, …) comme **alias faible** de
+  `Default_Handler` (boucle infinie) ; `gr_interrupt.c` définit les vrais gestionnaires, **eux aussi faibles**.
+  Entre deux définitions faibles, l'éditeur de liens garde la **première rencontrée**.
+- hello compile `startup_gr55xx.s` en dernier (Makefile) ; PlatformIO le compilait en premier : `SVC_Handler` et
+  `HardFault_Handler` valaient `Default_Handler`.
+- Les correctifs de la ROM (`libble_sdk`) passent par le FPB : des instructions de la ROM sont remplacées par `SVC`,
+  et le gestionnaire SVC (`SVC_handler_proc` → `get_patch_rep_addr`) saute vers la fonction corrigée. Sans lui, le
+  premier appel d'une fonction corrigée dans `ble_stack_init()` tourne indéfiniment → chien de garde. Et sans
+  `HardFault_Handler`, aucune faute n'est enregistrée.
+- Correction : `startup_gr55xx.o` relié après les autres objets du SDK ; `tools/check_handlers.py` refuse toute image
+  dont `SVC_Handler`, `HardFault_Handler` ou `PendSV_Handler` vaut `Default_Handler` ; contrôle ajouté à l'émulateur.
+- Au passage, la table FPB (`patch_value`) est alignée sur 128 octets comme dans le script Keil de Goodix (le script
+  GCC du SDK n'aligne que sur 32 ; hello tombait sur 64 par hasard). Mesure de prudence : ce n'était pas la cause.
+- L'émulateur ne pouvait pas le voir : `ble_stack_init()` y est remplacée par un bouchon.
+
 ## Notes de compilation C++ (RadioLib)
 
 - Le démarrage GCC du SDK n'exécute pas `.init_array`, et cette table contient aussi `system_platform_init`
   (marquée constructeur dans le SDK). **Ne jamais appeler `__libc_init_array()`** : on relancerait l'initialisation
   de la plateforme. Les objets C++ sont construits à la demande (placement `new`). Seul constructeur global de
   RadioLib embarqué : `RadioLibCRCInstance`, inutilisé par le pilote LR11x0 (code commenté dans `LR11x0_commands.cpp`).
-- Bogue du SDK : `drivers/inc/hal/gr55xx_ll_bod.h` ouvre `extern "C" {` sans le refermer ; `radio_hal.cpp` le referme.
+- Bogue du SDK : `drivers/inc/hal/gr55xx_ll_bod.h` ouvre `extern "C" {` sans le refermer. Corrigé dans le SDK
+  (branche `platformio` du clone, commit `b1bb11f`) ; les en-têtes du SDK s'incluent depuis du C++ dans un bloc
+  `extern "C"` (voir `gr551x_sdk.h` du cœur Arduino).
