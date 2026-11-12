@@ -331,7 +331,7 @@ async def cmd_flash(a):
 
     address = None
     if a.enter_dfu:
-        address = await at_session(a.enter_dfu, ['AT+DFU_ENTER'], a.t)
+        address = await enter_dfu(a.enter_dfu, a.t)
         print('le boîtier redémarre en bootloader DFU…')
         await asyncio.sleep(3.0)          # laisser le firmware Seeed redémarrer (≈1,2 s)
         bluez_forget(address)
@@ -420,6 +420,29 @@ async def at_session(name, cmds, timeout):
     return address
 
 
+async def enter_dfu(name, timeout):
+    """Fait passer l'appareil en bootloader DFU, quel que soit le firmware en place :
+    firmware Seeed (UART transparent ISSC) -> AT+DFU_ENTER ; nos firmwares (console GUS) -> 'dfu'."""
+    c, adv = await connect(name, timeout)
+    address = c.address
+    try:
+        if c.services.get_characteristic(SEEED_RX) is not None:
+            print('firmware Seeed : AT+DFU_ENTER', flush=True)
+            await c.start_notify(SEEED_TX, lambda _h, d: print(d.decode(errors='replace'), end='', flush=True))
+            await c.write_gatt_char(SEEED_RX, b'AT+DFU_ENTER\r\n', response=True)
+        elif c.services.get_characteristic(GUS_RX) is not None:
+            print('firmware T1000-A (console GUS) : dfu', flush=True)
+            await c.start_notify(GUS_TX, lambda _h, d: print(d.decode(errors='replace'), end='', flush=True))
+            await c.write_gatt_char(GUS_RX, b'dfu\r\n', response=False)
+        else:
+            sys.exit('aucun canal connu pour demander le DFU sur cet appareil')
+        await asyncio.sleep(2.5)
+    finally:
+        with contextlib.suppress(Exception):
+            await c.disconnect()
+    return address
+
+
 async def cmd_at(a):
     await at_session(a.name, a.cmds, a.t)
 
@@ -448,7 +471,7 @@ def main():
     p = sub.add_parser('flash'); p.add_argument('file'); p.add_argument('--name', default='SENSECAP_GR_DFU')
     p.add_argument('-t', type=float, default=180)
     p.add_argument('--dry-run', action='store_true', help='interroge le bootloader sans rien écrire')
-    p.add_argument('--enter-dfu', metavar='NOM', help='passer d\'abord le firmware Seeed NOM en DFU (AT+DFU_ENTER)')
+    p.add_argument('--enter-dfu', metavar='NOM', help='passer d\'abord l\'appareil NOM en DFU (AT+DFU_ENTER pour Seeed, « dfu » pour nos firmwares)')
     p = sub.add_parser('at'); p.add_argument('cmds', nargs='+'); p.add_argument('--name', default='T1000')
     p.add_argument('-t', type=float, default=180)
     p = sub.add_parser('console'); p.add_argument('--name', default='T1000A-Test'); p.add_argument('-t', type=float, default=60)
