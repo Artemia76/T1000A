@@ -53,7 +53,7 @@ LDFLAGS := $(CPUFLAGS) -Wl,--gc-sections -T gr5515_t1000a.lds \
            $(SDK)/platform/soc/linker/gcc/rom_symbol_gcc.txt \
            -L$(SDK)/components/libraries/app_crypto/gcc -lapp_crypto \
            -L$(SDK)/platform/soc/linker/gcc -lble_sdk \
-           -Wl,--no-warn-mismatch -Wl,-Map=$(BUILD)/$(TARGET).map
+           -Wl,-Map=$(BUILD)/$(TARGET).map
 
 OBJ := $(addprefix $(BUILD)/obj/,$(notdir $(SRC_C:.c=.o) $(SRC_S:.s=.o)))
 vpath %.c $(sort $(dir $(SRC_C)))

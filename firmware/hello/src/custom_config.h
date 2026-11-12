@@ -166,11 +166,10 @@
 // <o> NVDS Start Address
 // <i> Default:  0x010FF000
 #ifndef NVDS_START_ADDR
-#if (CHIP_TYPE == 1) || (CHIP_TYPE == 6) || (CHIP_TYPE == 7)
-#define NVDS_START_ADDR         0x0107F000
-#else
-#define NVDS_START_ADDR         0x010FF000
-#endif
+/* T1000-A : même NVDS que le firmware Seeed (nvds_init(0x010FC000, 1) relevé à 0x01046D9C).
+ * Ne pas utiliser la valeur par défaut 0x010FF000 : nvds_init efface la zone s'il n'y trouve pas
+ * d'en-tête valide, et son contenu sur le boîtier est inconnu (bootloader ?). */
+#define NVDS_START_ADDR         0x010FC000
 #endif
 
 // <o> The Number of sectors for NVDS
