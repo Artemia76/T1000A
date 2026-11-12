@@ -6,6 +6,7 @@ Sous-commandes :
   gatt [--name N] [-t s]         attend l'appareil (fenêtre courte après appui long), s'y connecte
                                  immédiatement et liste services / caractéristiques
   flash FICHIER [--name N]       DFU Goodix vers le bootloader (SENSECAP_GR_DFU_xxxx)
+  at CMD… [--name N]             envoie des commandes AT au firmware Seeed (UART transparent BLE)
   console [--name N]             console texte du firmware de test (service GUS)
 
 Exemples :
@@ -21,6 +22,11 @@ GUS_RX   = 'a6ed0203' + GOODIX   # écriture PC -> appareil
 OTA_TX   = 'a6ed0402' + GOODIX
 OTA_RX   = 'a6ed0403' + GOODIX
 OTA_CTRL = 'a6ed0404' + GOODIX
+
+# Firmware Seeed d'origine : service « Transparent UART » Microchip/ISSC, canal des commandes AT
+SEEED_SVC = '49535343-fe7d-4ae5-8fa9-9fafd205e455'
+SEEED_TX  = '49535343-1e4d-4bd9-ba61-23c647249616'   # notifications appareil -> PC
+SEEED_RX  = '49535343-8841-43f4-a8d4-ecbe34729bb3'   # écriture PC -> appareil
 
 APP_LOAD_ADDR = 0x0101B000      # seule adresse acceptée pour une application T1000-A
 
@@ -42,6 +48,39 @@ async def wait_for(name_prefix, timeout):
             sys.exit('introuvable')
 
 
+import contextlib
+
+
+@contextlib.asynccontextmanager
+async def disconnecting(c):
+    """Garantit la déconnexion d'un client déjà connecté (BleakClient en `async with` reconnecterait)."""
+    try:
+        yield c
+    finally:
+        with contextlib.suppress(Exception):
+            await c.disconnect()
+
+
+async def connect(name, timeout):
+    """Attend l'appareil puis s'y connecte, en réessayant tant que le délai n'est pas écoulé :
+    BlueZ échoue souvent au premier essai (br-connection-canceled) sur une fenêtre d'annonce courte."""
+    deadline = time.time() + timeout
+    while True:
+        dev, adv = await wait_for(name, max(1.0, deadline - time.time()))
+        print(f'trouvé : {adv.local_name} {dev.address} rssi={adv.rssi} services_pub={adv.service_uuids}',
+              flush=True)
+        c = BleakClient(dev, timeout=10)
+        try:
+            await c.connect()
+            print(f'connecté, MTU={c.mtu_size}', flush=True)
+            return c, adv
+        except Exception as e:
+            print(f'échec de connexion ({e}), nouvel essai…', flush=True)
+            if time.time() > deadline:
+                sys.exit('abandon : délai écoulé')
+            await asyncio.sleep(0.3)
+
+
 async def cmd_scan(a):
     seen = {}
 
@@ -55,11 +94,8 @@ async def cmd_scan(a):
 
 
 async def cmd_gatt(a):
-    dev, adv = await wait_for(a.name, a.t)
-    print(f'trouvé : {adv.local_name} {dev.address} rssi={adv.rssi} services_pub={adv.service_uuids} '
-          f'manuf={ {k: v.hex() for k, v in adv.manufacturer_data.items()} }')
-    async with BleakClient(dev, timeout=15) as c:
-        print(f'connecté, MTU={c.mtu_size}')
+    c, adv = await connect(a.name, a.t)
+    try:
         for s in c.services:
             print(f'service {s.uuid}  {s.description}')
             for ch in s.characteristics:
@@ -71,6 +107,8 @@ async def cmd_gatt(a):
                     except Exception as e:
                         val = f'  (lecture : {e})'
                 print(f'   car {ch.uuid}  h={ch.handle}  {",".join(ch.properties)}{val}')
+    finally:
+        await c.disconnect()
 
 
 # ---------------------------------------------------------------- DFU Goodix
@@ -147,9 +185,11 @@ async def cmd_flash(a):
     img_info = tail[:40]          # dfu_image_info_t : pattern, version, boot_info (24), comments (12)
     print(f'image : {len(img)} octets, commentaire « {tail[28:40].split(bytes(1))[0].decode()} »')
 
-    dev, adv = await wait_for(a.name, a.t)
-    print(f'trouvé {adv.local_name} {dev.address}')
-    async with BleakClient(dev, timeout=15) as c:
+    if a.enter_dfu:
+        await at_session(a.enter_dfu, ['AT+DFU_ENTER'], a.t)
+        print('le boîtier redémarre en bootloader DFU…')
+    c, adv = await connect(a.name, a.t)
+    async with disconnecting(c):
         d = GoodixDfu(c)
         await d.start()
         info = await d.request(d.GET_INFO)
@@ -194,11 +234,34 @@ async def cmd_flash(a):
         print('PROGRAM_END accepté : l\'appareil redémarre sur le nouveau firmware')
 
 
+# ---------------------------------------------------------------- AT (firmware Seeed)
+
+async def at_session(name, cmds, timeout):
+    c, adv = await connect(name, timeout)
+    try:
+        await c.start_notify(SEEED_TX, lambda _h, d: print(d.decode(errors='replace'), end='', flush=True))
+        for cmd in cmds:
+            print(f'>>> {cmd}', flush=True)
+            data = cmd.encode() + b'\r\n'
+            for i in range(0, len(data), 20):
+                await c.write_gatt_char(SEEED_RX, data[i:i + 20], response=True)
+            await asyncio.sleep(2.5)
+    finally:
+        try:
+            await c.disconnect()
+        except Exception:
+            pass                      # normal après AT+DFU_ENTER (redémarrage)
+
+
+async def cmd_at(a):
+    await at_session(a.name, a.cmds, a.t)
+
+
 # ---------------------------------------------------------------- console GUS
 
 async def cmd_console(a):
-    dev, adv = await wait_for(a.name, a.t)
-    async with BleakClient(dev, timeout=15) as c:
+    c, adv = await connect(a.name, a.t)
+    async with disconnecting(c):
         await c.start_notify(GUS_TX, lambda _h, d: print(d.decode(errors='replace'), end='', flush=True))
         print(f'connecté à {adv.local_name} (Ctrl-D pour quitter)')
         loop = asyncio.get_running_loop()
@@ -217,10 +280,13 @@ def main():
     p = sub.add_parser('gatt'); p.add_argument('--name', default='T1000'); p.add_argument('-t', type=float, default=120)
     p = sub.add_parser('flash'); p.add_argument('file'); p.add_argument('--name', default='SENSECAP_GR_DFU')
     p.add_argument('-t', type=float, default=180)
+    p.add_argument('--enter-dfu', metavar='NOM', help='passer d\'abord le firmware Seeed NOM en DFU (AT+DFU_ENTER)')
+    p = sub.add_parser('at'); p.add_argument('cmds', nargs='+'); p.add_argument('--name', default='T1000')
+    p.add_argument('-t', type=float, default=180)
     p = sub.add_parser('console'); p.add_argument('--name', default='T1000A-Test'); p.add_argument('-t', type=float, default=60)
     a = ap.parse_args()
     try:
-        asyncio.run({'scan': cmd_scan, 'gatt': cmd_gatt, 'flash': cmd_flash, 'console': cmd_console}[a.cmd](a))
+        asyncio.run({'scan': cmd_scan, 'gatt': cmd_gatt, 'flash': cmd_flash, 'at': cmd_at, 'console': cmd_console}[a.cmd](a))
     except DfuError as e:
         sys.exit(f'DFU : {e}')
 
