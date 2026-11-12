@@ -147,7 +147,8 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | Réinstallation du firmware Seeed v2.5 | OK, `AT+VER=?` → V2.5 |
 | 2026-11-12 | Firmware de test `hello-0.1` (oscillateur basse fréquence **interne**, `CFG_LPCLK_INTERNAL_EN 1`) | Flash OK, somme vérifiée. **Boucle de redémarrage toutes les ≈ 6 s** (LED 3 s allumée / 3 s éteinte), aucun BLE, bouton sans effet. |
 | 2026-11-12 | Récupération sans SWD | **Brancher l'alimentation (cordon magnétique) en maintenant le bouton appuyé → bootloader en DFU BLE** (`SENSECAP_GR_DFU_xxxx`), quel que soit l'état de l'application. L'appui continu seul (≈ 30 s) n'avait pas suffi. Le DFU a été capté et `hello-0.2` flashé. |
-| 2026-11-12 | `hello-0.2` (quartz 32 kHz comme Seeed) | **OK** : annonce BLE `T1000A-Test` (adresse FD:28:17:38:7A:8F, différente de celle du firmware Seeed), console GUS, `ble_etape=3`, `ble_err=0`. |
+| 2026-11-12 | `hello-0.2` (quartz 32 kHz comme Seeed) | **OK** : annonce BLE `T1000A-Test` (adresse FD:28:17:38:7A:8F, différente de celle du firmware Seeed), console GUS, `ble_etape=3`, `ble_err=0`, LED 3 flashs. Défaut console : réponses perdues ou en double. |
+| 2026-11-12 | Cycle normal `dfu` (console) → bootloader → flash `hello-0.3` | **OK** (`flash --enter-dfu T1000A-Test`), somme vérifiée. Console 0.3 : 4 commandes d'affilée, 4 réponses. Bouton lu à 0 au repos sur AON0. |
 
 ### Analyse de l'échec de `hello-0.1`
 
