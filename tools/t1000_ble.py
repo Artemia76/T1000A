@@ -217,6 +217,9 @@ async def cmd_flash(a):
         if boot_load + boot_bin + 48 >= save_addr:
             sys.exit('chevauchement avec le bootloader : abandon')
 
+        if a.dry_run:
+            print('--dry-run : arrêt avant toute écriture (le bootloader repart seul sur l\'appli après 3 min)')
+            return
         info40 = bytearray(img_info)
         struct.pack_into('<I', info40, 12, save_addr)       # boot_info.load_addr
         await d.request(d.PROGRAM_START, b'\x00' + bytes(info40), timeout=20)
@@ -280,6 +283,7 @@ def main():
     p = sub.add_parser('gatt'); p.add_argument('--name', default='T1000'); p.add_argument('-t', type=float, default=120)
     p = sub.add_parser('flash'); p.add_argument('file'); p.add_argument('--name', default='SENSECAP_GR_DFU')
     p.add_argument('-t', type=float, default=180)
+    p.add_argument('--dry-run', action='store_true', help='interroge le bootloader sans rien écrire')
     p.add_argument('--enter-dfu', metavar='NOM', help='passer d\'abord le firmware Seeed NOM en DFU (AT+DFU_ENTER)')
     p = sub.add_parser('at'); p.add_argument('cmds', nargs='+'); p.add_argument('--name', default='T1000')
     p.add_argument('-t', type=float, default=180)
