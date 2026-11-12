@@ -104,7 +104,7 @@ La séquence d'initialisation est exactement celle du T1000-E (EN, VRTC_EN, RESE
 | IRQ accéléromètre | AON2 (`0x22`) | probable |
 | État de charge | AON4, AON5, MSIO0 | probable |
 | Détection du câble console | GPIO11 (`0x0b` = UART0 RX) lu en entrée pull-up au démarrage, juste avant l'init de l'UART0 (même fonction que les chaînes « Tracker T1000-A/B [Test] ») | probable |
-| ADC (batterie / capteurs) | MSIO2 (mux 7) | probable |
+| ADC (batterie / capteurs) | **Batterie : MSIO4**, pont diviseur ÷2, activé par GPIO14 (fonction `0x01028DDC` → `0x01034914`). Voies logiques Seeed 0…4 = MSIO0…4 (n° 3 : lumière, LED AON3 éteinte pendant la mesure). Réglages : single-ended, réf. interne 1,28 V, 1 MHz, 20 échantillons, `app_adc_voltage_intern`. | **vérifié** (4198 mV mesurés, batterie pleine) |
 
 ## Récupération d'urgence (validée le 2026-11-12)
 
@@ -159,6 +159,7 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | `blink-0.1` (platform-gr551x, cœur Arduino, PlatformIO) | Retour en DFU en < 1 min (sécurité des 3 démarrages courts). Fil d'Ariane relu avec hello : `64 65` à chaque démarrage → blocage dans `ble_stack_init()`, sans faute enregistrée. Ni l'alignement de la table FPB ni la chaîne de compilation (même échec avec GCC 16) n'en sont la cause. |
 | 2026-11-12 | `blink-0.1` corrigé : code de démarrage relié en dernier | **Croquis Arduino opérationnel** : annonce `T1000A-Arduino`, console (info, btn, led, `Serial` → console), `pio run -t upload` de bout en bout (dfu par la console + FastDfu) en 20 s. |
 | 2026-11-12 | **Compagnon MeshCore** (`t1000a_companion_radio_ble`, platform-gr551x) | Démarrage complet (LR1110 via RadioLib/ArduinoHal, LittleFS formaté, identité créée), annonce `MeshCore-FD2817387A8F` (service Nordic UART). Protocole compagnon depuis le PC : `DEVICE_INFO` (v1.18.0, Seeed Tracker T1000-A), `SELF_INFO`. `SEND_SELF_ADVERT` → **advert reçu par le Heltec : émission LoRa validée.** Pas encore d'appairage BLE par PIN. |
+| 2026-11-12 | Compagnon + appairage PIN + batterie | `bat` (console) : **4198 mV** (MSIO4 2099 mV ×2). Appairage par code fixe (affichage seul) implémenté, à tester avec l'application. |
 
 ### Analyse de l'échec de `hello-0.1`
 
