@@ -12,6 +12,9 @@
 #include "radio_hal.h"
 #include "radio_test.h"
 #include "diag.h"
+extern "C" {
+#include "app_io.h"
+}
 #include <new>
 #include <stdlib.h>
 #include <string.h>
@@ -79,6 +82,23 @@ static void pins_snapshot(uint32_t *gpio, uint32_t *aon)
     *gpio = 0; *aon = 0;
     for (uint32_t i = 0; i < 32; i++) if (s_hal->digitalRead(i)) *gpio |= 1u << i;
     for (uint32_t i = 0; i < 8; i++)  if (s_hal->digitalRead(0x20 + i)) *aon |= 1u << i;
+    for (uint32_t i = 0; i < 5; i++)  if (s_hal->digitalRead(0x30 + i)) *aon |= 1u << (8 + i);   /* MSIO en bits 8..12 */
+}
+
+/* Niveau d'une broche lue successivement avec pull-up puis pull-down (configuration restaurée ensuite
+ * par l'appelant). Renvoie bit0 = lecture en pull-up, bit1 = lecture en pull-down. */
+static uint32_t pull_test(app_io_type_t type, uint32_t mask)
+{
+    app_io_init_t io;
+    uint32_t r = 0;
+    io.pin = mask; io.mode = APP_IO_MODE_INPUT; io.mux = APP_IO_MUX_7;
+    io.pull = APP_IO_PULLUP;   app_io_init(type, &io);
+    for (volatile int d = 0; d < 2000; d++) {}
+    if (app_io_read_pin(type, mask) == APP_IO_PIN_SET) r |= 1;
+    io.pull = APP_IO_PULLDOWN; app_io_init(type, &io);
+    for (volatile int d = 0; d < 2000; d++) {}
+    if (app_io_read_pin(type, mask) == APP_IO_PIN_SET) r |= 2;
+    return r;
 }
 
 extern "C" int radio_active(void) { return s_radio != nullptr; }
@@ -217,9 +237,16 @@ extern "C" void radio_poll(void)
          * La broche qui change est la ligne d'interruption (et sa polarité). */
         uint32_t g1, a1, g2, a2;
         pins_snapshot(&g1, &a1);
+        uint32_t pt_active = pull_test(APP_IO_TYPE_AON, APP_IO_PIN_1);   /* AON1 avec IRQ active */
         s_radio->clearIrqState(RADIOLIB_LR11X0_IRQ_ALL);
         pins_snapshot(&g2, &a2);
-        console_printf("IRQ active : gpio=%08lx aon=%02lx | apres acquit : gpio=%08lx aon=%02lx | diff gpio=%08lx aon=%02lx\r\n",
+        uint32_t pt_idle = pull_test(APP_IO_TYPE_AON, APP_IO_PIN_1);     /* AON1 IRQ acquittée */
+        s_hal->attachInterrupt(PIN_IRQ, on_irq, 1);                      /* reconfiguration d'origine */
+        console_printf("AON1 [pull-up,pull-down] : IRQ active=%lu%lu, IRQ acquittee=%lu%lu "
+                       "(11=piloté haut, 00=piloté bas, 10=en l'air)\r\n",
+                       (unsigned long)(pt_active & 1), (unsigned long)(pt_active >> 1),
+                       (unsigned long)(pt_idle & 1), (unsigned long)(pt_idle >> 1));
+        console_printf("IRQ active : gpio=%08lx aon+msio=%04lx | apres acquit : gpio=%08lx aon+msio=%04lx | diff gpio=%08lx aon+msio=%04lx\r\n",
                        (unsigned long)g1, (unsigned long)a1, (unsigned long)g2, (unsigned long)a2,
                        (unsigned long)(g1 ^ g2), (unsigned long)(a1 ^ a2));
     }
