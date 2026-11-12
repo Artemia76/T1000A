@@ -105,3 +105,28 @@ La séquence d'initialisation est exactement celle du T1000-E (EN, VRTC_EN, RESE
 | État de charge | AON4, AON5, MSIO0 | probable |
 | Détection du câble console | GPIO11 (`0x0b` = UART0 RX) lu en entrée pull-up au démarrage, juste avant l'init de l'UART0 (même fonction que les chaînes « Tracker T1000-A/B [Test] ») | probable |
 | ADC (batterie / capteurs) | MSIO2 (mux 7) | probable |
+
+## Mise à jour par Bluetooth depuis un PC (validée sur le boîtier le 2026-11-12)
+
+Outil : `tools/t1000_ble.py` (Python + bleak, BlueZ). Le T1000-A n'a pas de port série.
+
+1. **Firmware Seeed en marche.** Il n'est visible que quelques secondes après un appui long. Il se présente
+   sous le nom `<n° de série>-T1000` et expose le service « Transparent UART » Microchip/ISSC
+   `49535343-fe7d-4ae5-8fa9-9fafd205e455` : écriture sur `…8841-43f4-a8d4-ecbe34729bb3`, notifications sur
+   `…1e4d-4bd9-ba61-23c647249616`. C'est le canal des commandes AT (`AT+VER=?`, `AT+DFU_ENTER`…).
+2. **`AT+DFU_ENTER`** → `OK`, redémarrage en bootloader `SENSECAP_GR_DFU_<6 derniers chiffres du n° de série>`
+   (même adresse BLE). Le cache BlueZ garde l'ancien nom : l'outil retire l'appareil du cache et le
+   reconnaît par son adresse.
+3. **Bootloader** : protocole Goodix **FastDfu v3** (service `a6ed0701-d344-460a-8075-b9e8ec90d71b`,
+   commandes et acquittements sur `…0702`, données sur `…0703`), MTU 247, tampon 4096. Le protocole est
+   transcrit de la bibliothèque Goodix `GoodixBleDFU.Android` (`GR5xxxFastDfu.java`). Séquence : version,
+   type de Flash, effacement, flux de données, FLUSH, vérification de la somme, `WRITE_BOOT` avec les 40 premiers
+   octets de l'en-tête d'image.
+
+Essai réel : firmware Seeed v2.5 (373 Ko) réinstallé à la place de la V2.8, écrit en 10 s, somme de contrôle
+vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
+
+```
+.claude-work/.venv/bin/python -I tools/t1000_ble.py at 'AT+VER=?'
+.claude-work/.venv/bin/python -I tools/t1000_ble.py flash FICHIER_dfu.bin --enter-dfu <nom>-T1000 [--dry-run]
+```
