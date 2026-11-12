@@ -7,9 +7,7 @@ extern "C" {
 #include "gr55xx_delay.h"
 #include "safety.h"
 }
-/* Bogue du SDK Goodix : drivers/inc/hal/gr55xx_ll_bod.h ouvre « extern "C" { » sans le refermer
- * (inclus via gr_includes.h). On referme ce bloc orphelin ici. */
-}
+/* (Le bloc « extern "C" » orphelin de gr55xx_ll_bod.h est corrigé dans le SDK, branche platformio.) */
 
 /* Valeurs arbitraires mais distinctes, passées à RadioLibHal (utilisées seulement par nous). */
 enum { MODE_INPUT = 0, MODE_OUTPUT = 1, LVL_LOW = 0, LVL_HIGH = 1, IRQ_RISING = 1, IRQ_FALLING = 2 };
