@@ -1,5 +1,6 @@
 # Firmware de test T1000-A (Goodix GR5515) — compilation GCC hors arborescence du SDK.
 #   make            -> build/t1000a_hello.bin (brut) et build/t1000a_hello_dfu.bin (image DFU)
+#   make test       -> recompile puis valide dans l'émulateur (tools/sim)
 #   make clean
 
 TARGET   := t1000a_hello
@@ -20,7 +21,7 @@ SRC_CPP := src/radio_hal.cpp src/radio_test.cpp \
   $(RADIOLIB)/utils/Utils.cpp $(RADIOLIB)/utils/CRC.cpp
 
 SRC_C := \
-  src/main.c src/board.c src/safety.c src/console.c \
+  src/main.c src/board.c src/safety.c src/console.c src/diag.c \
   $(SDK)/platform/soc/common/gr_system.c \
   $(SDK)/platform/soc/common/gr_interrupt.c \
   $(SDK)/platform/soc/common/gr_platform.c \
@@ -111,8 +112,12 @@ $(BUILD)/$(TARGET)_dfu.bin: $(BUILD)/$(TARGET).bin $(ROOT)/tools/mkimage.py
 $(BUILD)/obj:
 	@mkdir -p $@
 
+# Validation dans l'émulateur GR5515 (recompile d'abord : jamais de test sur un ELF périmé)
+test: $(BUILD)/$(TARGET)_dfu.bin
+	$(ROOT)/.claude-work/.venv/bin/python -I $(ROOT)/tools/sim/test_hello.py $(BUILD)/$(TARGET).elf
+
 clean:
 	rm -rf $(BUILD)
 
 -include $(OBJ:.o=.d)
-.PHONY: all clean
+.PHONY: all clean test

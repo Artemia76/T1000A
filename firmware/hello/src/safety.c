@@ -134,6 +134,13 @@ void safety_poll(uint32_t uptime_ms)
     }
 }
 
+void safety_wdt_kick(void)
+{
+    if (s_wdt_on) {
+        app_aon_wdt_refresh();
+    }
+}
+
 uint32_t safety_boot_count(void)
 {
     return s_boot_count;

@@ -261,7 +261,7 @@ async def fast_flash(c, a, img, tail):
     load = struct.unpack('<I', tail[12:16])[0]
     end = load + len(img)
     print(f'zone à écrire : {load:#x}..{end:#x}')
-    if load != APP_LOAD_ADDR or end > 0x010E3000:
+    if load != APP_LOAD_ADDR or end > 0x010E2000:
         sys.exit('zone hors de l\'espace applicatif autorisé : abandon')
     if a.dry_run:
         print('--dry-run : arrêt avant toute commande modifiante (le bootloader repart seul après 3 min)')

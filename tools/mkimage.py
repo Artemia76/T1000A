@@ -20,7 +20,7 @@ Usage : mkimage.py brut.bin sortie_dfu.bin [--load 0x0101B000] [--comment Tracke
 import argparse, struct, subprocess, sys
 
 PATTERN = 0x4744
-APP_LIMIT = 0x010E3000          # début du secteur de garde : l'appli doit s'arrêter avant
+APP_LIMIT = 0x010E2000          # secteurs réservés au-delà : diag 0x010E2000, garde 0x010E3000, DFU 0x010E4000
 RAM_RANGES = [(0x00800000, 0x00840000), (0x30000000, 0x30040000)]
 
 

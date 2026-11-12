@@ -26,6 +26,8 @@ void safety_ble_connected(void);
 void safety_enter_dfu(void) __attribute__((noreturn));
 /* Redémarrage normal (remet le compteur à zéro avant). Ne revient pas. */
 void safety_reboot(void) __attribute__((noreturn));
+/* Rafraîchit le chien de garde depuis une attente bornée (pilotes, RadioLib). Sans effet s'il est inactif. */
+void safety_wdt_kick(void);
 /* Nombre de démarrages rapides consécutifs constaté au démarrage. */
 uint32_t safety_boot_count(void);
 

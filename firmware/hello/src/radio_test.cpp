@@ -11,6 +11,7 @@
  */
 #include "radio_hal.h"
 #include "radio_test.h"
+#include "diag.h"
 #include <new>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +25,7 @@ void console_printf(const char *fmt, ...);
 #define PIN_RESET 12
 #define PIN_BUSY  13
 #define PIN_IRQ   0x21          /* AON1 = DIO9 */
+#define PIN_RF_EN 14            /* mis à 1 par le firmware Seeed dans sa séquence radio (0x01036304) */
 
 #define TCXO_VOLTAGE 3.0f       /* firmware Seeed : code 6 = 3,0 V, démarrage 164 ticks */
 #define SYNC_WORD    RADIOLIB_LR11X0_LORA_SYNC_WORD_PRIVATE
@@ -77,17 +79,39 @@ static void radio_create(void)
     s_radio = new (s_radio_mem) LR1110(s_mod);
 }
 
+/* Fil d'Ariane (commande diag après un redémarrage) :
+ * 10 début, 11 objets créés, 12 GPIO14 à 1, 13 HAL init (SPI), 14 état des broches lu,
+ * 20 begin lancé, 21 begin OK, 22 DCDC, 23 CRC, 24 en-tête, 25 gain RX, 29 terminé ; 9x = erreur. */
 static int16_t radio_begin(float mhz, float bw, uint8_t sf, uint8_t cr)
 {
+    diag_begin();
+    diag_step(10);
     radio_create();
+    diag_step(11);
+    s_hal->pinMode(PIN_RF_EN, 1);
+    s_hal->digitalWrite(PIN_RF_EN, 1);
+    s_hal->delay(10);
+    diag_step(12);
+    s_hal->init();
+    diag_step(13);
+    console_printf("broches : BUSY=%lu IRQ=%lu spi=%d\r\n", (unsigned long)s_hal->digitalRead(PIN_BUSY),
+                   (unsigned long)s_hal->digitalRead(PIN_IRQ), s_hal->spiError());
+    diag_step(14);
     s_radio->setRfSwitchTable(rfswitch_dios, rfswitch_table);
+    diag_step(20);
     int16_t st = s_radio->begin(mhz, bw, sf, cr, SYNC_WORD, TX_POWER_DBM, PREAMBLE_LEN, TCXO_VOLTAGE);
-    if (st != RADIOLIB_ERR_NONE) return st;
-    st = s_radio->setRegulatorDCDC();               if (st) return st;
-    st = s_radio->setCRC(2);                        if (st) return st;
-    st = s_radio->explicitHeader();                 if (st) return st;
-    st = s_radio->setRxBoostedGainMode(true);       if (st) return st;
+    if (st != RADIOLIB_ERR_NONE) { diag_step(91); return st; }
+    diag_step(21);
+    st = s_radio->setRegulatorDCDC();               if (st) { diag_step(92); return st; }
+    diag_step(22);
+    st = s_radio->setCRC(2);                        if (st) { diag_step(93); return st; }
+    diag_step(23);
+    st = s_radio->explicitHeader();                 if (st) { diag_step(94); return st; }
+    diag_step(24);
+    st = s_radio->setRxBoostedGainMode(true);       if (st) { diag_step(95); return st; }
+    diag_step(25);
     s_radio->setPacketReceivedAction(on_irq);
+    diag_step(29);
     return RADIOLIB_ERR_NONE;
 }
 

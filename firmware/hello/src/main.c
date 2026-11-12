@@ -17,6 +17,7 @@
 #include "console.h"
 #include "safety.h"
 #include "radio_test.h"
+#include "diag.h"
 
 STACK_HEAP_INIT(heaps_table);
 
@@ -68,6 +69,7 @@ int main(void)
 {
     board_init();
     safety_boot();                  /* peut basculer en DFU après plusieurs plantages */
+    diag_boot();                    /* cause du redémarrage, secteur de diagnostic */
 
     sdk_err_t e = ble_stack_init(ble_evt_handler, &heaps_table);
     if (e) ble_diag_err(0x0700 | (e & 0xFF));

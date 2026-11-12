@@ -5,6 +5,7 @@ extern "C" {
 #include "app_io.h"
 #include "app_spi.h"
 #include "gr55xx_delay.h"
+#include "safety.h"
 }
 /* Bogue du SDK Goodix : drivers/inc/hal/gr55xx_ll_bod.h ouvre « extern "C" { » sans le refermer
  * (inclus via gr_includes.h). On referme ce bloc orphelin ici. */
@@ -15,6 +16,8 @@ enum { MODE_INPUT = 0, MODE_OUTPUT = 1, LVL_LOW = 0, LVL_HIGH = 1, IRQ_RISING = 
 
 GR5515Hal::GR5515Hal()
     : RadioLibHal(MODE_INPUT, MODE_OUTPUT, LVL_LOW, LVL_HIGH, IRQ_RISING, IRQ_FALLING) {}
+
+static void wdt_kick_rate_limited(void);
 
 /* ---------------------------------------------------------------- broches */
 
@@ -47,6 +50,7 @@ void GR5515Hal::digitalWrite(uint32_t pin, uint32_t value)
 
 uint32_t GR5515Hal::digitalRead(uint32_t pin)
 {
+    wdt_kick_rate_limited();          /* RadioLib attend BUSY en lisant la broche en boucle */
     app_io_type_t t; uint32_t m;
     if (pin == RADIOLIB_NC || !pin_decode(pin, &t, &m)) return 0;
     return app_io_read_pin(t, m) == APP_IO_PIN_SET ? 1 : 0;
@@ -101,10 +105,10 @@ static uint64_t cycles(void)
 
 void GR5515Hal::init()
 {
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CYCCNT = 0;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    s_cyc_last = 0;
+    /* Référence permanente sur le compteur DWT du SDK (comptage de références) : aucun pilote
+     * ne pourra le désactiver en sortie de hal_dwt_disable(). */
+    hal_dwt_enable();
+    s_cyc_last = DWT->CYCCNT;
     s_cyc_total = 0;
     spiBegin();
 }
@@ -117,10 +121,23 @@ void GR5515Hal::term()
 RadioLibTime_t GR5515Hal::micros() { return (RadioLibTime_t)(cycles() / (SystemCoreClock / 1000000u)); }
 RadioLibTime_t GR5515Hal::millis() { return (RadioLibTime_t)(cycles() / (SystemCoreClock / 1000u)); }
 
+/* Les attentes de RadioLib sont bornées par ses propres délais : on y rafraîchit le chien de garde
+ * (toutes les 100 ms) pour qu'une attente légitime de plusieurs secondes ne provoque pas de redémarrage. */
+static uint64_t s_last_kick;
+
+static void wdt_kick_rate_limited(void)
+{
+    uint64_t now = cycles();
+    if (now - s_last_kick > (uint64_t)SystemCoreClock / 10u) {
+        s_last_kick = now;
+        safety_wdt_kick();
+    }
+}
+
 void GR5515Hal::delay(RadioLibTime_t ms)
 {
     uint64_t end = cycles() + (uint64_t)ms * (SystemCoreClock / 1000u);
-    while (cycles() < end) {}
+    while (cycles() < end) { wdt_kick_rate_limited(); }
 }
 
 void GR5515Hal::delayMicroseconds(RadioLibTime_t us)
@@ -142,7 +159,7 @@ long GR5515Hal::pulseIn(uint32_t pin, uint32_t state, RadioLibTime_t timeout)
     return (long)(micros() - t0);
 }
 
-void GR5515Hal::yield() {}
+void GR5515Hal::yield() { wdt_kick_rate_limited(); }
 
 /* ---------------------------------------------------------------- SPI */
 
