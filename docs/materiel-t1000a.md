@@ -153,6 +153,9 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | `hello-0.4` : `lr init` (RadioLib) | Redémarrage sans trace (cause non établie : pas encore de diagnostic). |
 | 2026-11-12 | `hello-0.5` : diagnostic persistant | `lr init` → fil d'Ariane `[10, 11]` : `delay()` appelé avant l'activation du compteur DWT, boucle infinie puis chien de garde. Reproduit ensuite à l'identique dans l'émulateur corrigé (S14). |
 | 2026-11-12 | `hello-0.6` : **LR1110 opérationnel** | `lr init` complet (étapes 10…29), `getVersionInfo` : matériel 0x22, type 0x01 (LR1110), firmware **3.7**. SPI 4 MHz, TCXO 3,0 V, DC/DC, GPIO14 à 1, BUSY=0 au repos. RSSI au repos −127,5 dBm. |
+| 2026-11-12 | `hello-0.7`/`0.8` : écoute MeshCore EU/UK Narrow (869,618 MHz, BW 62,5, SF 8, CR 8) | **Adverts du Heltec reçus** : 134 octets, en-tête `0x12` (advert flood), RSSI −33 à −38 dBm, SNR +13 à +14,5 dB. Mais uniquement par scrutation : IRQ sur AON1 jamais déclenchée. |
+| 2026-11-12 | `hello-0.9` : test pull-up/pull-down d'AON1 | IRQ active → AON1 à 0 quel que soit le pull ; IRQ acquittée → en l'air. **Ligne active à l'état bas, collecteur ouvert.** |
+| 2026-11-12 | `hello-0.10` : IRQ en pull-up / front descendant | **Réception par interruption OK** (`irq_broche=2`, `rx_par_scrutation=0`). |
 
 ### Analyse de l'échec de `hello-0.1`
 
