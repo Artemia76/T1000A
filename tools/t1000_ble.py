@@ -200,6 +200,122 @@ class GoodixDfu:
             print(f'trame inattendue {rt:#x} : {body.hex()}')
 
 
+class FastDfu:
+    """Client « FastDfu » Goodix (service a6ed0701), utilisé par le bootloader Seeed.
+    Transcription de GoodixBleDFU.Android : libdfu2/.../fastdfu/GR5xxxFastDfu.java.
+    Commande (car. 0702) : 'DOOG' (0x474F4F44 LE) + opcode + paramètres LE.
+    Acquittement (notification 0702) : opcode + paramètres. Données brutes sur 0703."""
+    HDR = struct.pack('<I', 0x474F4F44)
+    ERASE, FLUSH, VERIFY, WRITE_BOOT, FLASH_TYPE = 0x01, 0x02, 0x03, 0x04, 0x05
+    PAUSE, RESUME, BUFSIZE, NEXT_BUFFER, VERSION = 0x06, 0x07, 0x09, 0x0A, 0x0B
+
+    def __init__(self, client):
+        self.c = client
+        self.acks = asyncio.Queue()
+        self.paused = asyncio.Event()
+
+    def _on_notify(self, _h, data):
+        data = bytes(data)
+        if data[:4] == self.HDR:          # tolérance si l'acquittement reprend l'en-tête
+            data = data[4:]
+        if data and data[0] == self.PAUSE:
+            self.paused.set()
+        elif data and data[0] == self.RESUME:
+            self.paused.clear()
+        self.acks.put_nowait(data)
+
+    async def start(self):
+        await self.c.start_notify(SEEED_OTA_A, self._on_notify)
+
+    async def post(self, op, params=b''):
+        await self.c.write_gatt_char(SEEED_OTA_A, self.HDR + bytes([op]) + params, response=False)
+
+    async def ack(self, timeout=5.0):
+        try:
+            return await asyncio.wait_for(self.acks.get(), timeout)
+        except asyncio.TimeoutError:
+            raise DfuError('pas d\'acquittement')
+
+    async def cmd(self, op, params=b'', timeout=5.0):
+        await self.post(op, params)
+        while True:
+            a = await self.ack(timeout)
+            if a and a[0] == op:
+                return a
+            if a and a[0] in (self.PAUSE, self.RESUME):
+                continue
+            raise DfuError(f'acquittement inattendu pour {op:#x} : {a.hex()}')
+
+
+async def fast_flash(c, a, img, tail):
+    d = FastDfu(c)
+    await d.start()
+    ver = (await d.cmd(d.VERSION))[1]
+    print(f'FastDfu : version de protocole {ver}')
+    bufsize = 4096
+    if ver < 3:
+        bufsize = struct.unpack('<I', (await d.cmd(d.BUFSIZE))[1:5])[0]
+    print(f'taille de tampon : {bufsize}')
+    load = struct.unpack('<I', tail[12:16])[0]
+    end = load + len(img)
+    print(f'zone à écrire : {load:#x}..{end:#x}')
+    if load != APP_LOAD_ADDR or end > 0x010E3000:
+        sys.exit('zone hors de l\'espace applicatif autorisé : abandon')
+    if a.dry_run:
+        print('--dry-run : arrêt avant toute commande modifiante (le bootloader repart seul après 3 min)')
+        return
+
+    await d.cmd(d.FLASH_TYPE, b'\x00')                  # Flash interne
+    await d.post(d.ERASE, struct.pack('<II', load, len(img)))
+    while True:
+        r = await d.ack(timeout=30)
+        if not r or r[0] != d.ERASE or len(r) < 2:
+            raise DfuError(f'effacement : réponse {r.hex()}')
+        phase = r[1]
+        if phase == 0x03:
+            break
+        if phase in (0x01, 0x02):
+            n = struct.unpack('<H', r[2:4])[0] if len(r) >= 4 else 0
+            print(f'\r  effacement… {"début" if phase == 1 else n} secteur(s)', end='', flush=True)
+            continue
+        raise DfuError({0: 'adresse non alignée', 4: 'chevauche le firmware en cours',
+                        5: 'échec d\'effacement', 6: 'pas de Flash externe'}.get(phase, f'code {phase}'))
+    print('\neffacement terminé, écriture…')
+
+    mtu = max(20, c.mtu_size - 3)
+    t0, sent = time.time(), 0
+    if ver >= 3:
+        while sent < len(img):
+            while d.paused.is_set():
+                await asyncio.sleep(0.01)
+            chunk = img[sent:sent + mtu]
+            await c.write_gatt_char(SEEED_OTA_B, chunk, response=False)
+            sent += len(chunk)
+            if sent % (mtu * 50) < mtu:
+                print(f'\r  {sent * 100 // len(img):3d} %', end='', flush=True)
+    else:
+        while sent < len(img):
+            block = img[sent:sent + bufsize]
+            for i in range(0, len(block), mtu):
+                await c.write_gatt_char(SEEED_OTA_B, block[i:i + mtu], response=False)
+            sent += len(block)
+            r = await d.ack(timeout=10)
+            if r[0] != d.NEXT_BUFFER:
+                raise DfuError(f'écriture : réponse {r.hex()}')
+            print(f'\r  {sent * 100 // len(img):3d} %', end='', flush=True)
+    await d.cmd(d.FLUSH, timeout=20)
+    print(f'\nécrit en {time.time() - t0:.1f} s')
+    await asyncio.sleep(0.2)
+    cks = sum(img) & 0xFFFFFFFF
+    r = await d.cmd(d.VERIFY, struct.pack('<I', cks), timeout=20)
+    got = struct.unpack('<I', r[1:5])[0]
+    if got != cks:
+        raise DfuError(f'somme de contrôle Flash {got:#x} ≠ fichier {cks:#x} : NE PAS redémarrer, refaire le flash')
+    print(f'somme de contrôle vérifiée ({cks:#x})')
+    await d.post(d.WRITE_BOOT, tail[:40])
+    print('WRITE_BOOT envoyé : le boîtier redémarre sur le nouveau firmware')
+
+
 async def cmd_flash(a):
     img = open(a.file, 'rb').read()
     tail = img[-48:]
@@ -216,6 +332,11 @@ async def cmd_flash(a):
         print('le boîtier redémarre en bootloader DFU…')
     c, adv = await connect(a.name, a.t)
     async with disconnecting(c):
+        with contextlib.suppress(Exception):
+            await c._backend._acquire_mtu()            # BlueZ : MTU réellement négocié
+        print(f'MTU={c.mtu_size}')
+        if c.services.get_characteristic(SEEED_OTA_A) is not None:
+            return await fast_flash(c, a, img, tail)
         d = GoodixDfu(c)
         await d.start()
         info = await d.probe()
