@@ -151,6 +151,12 @@ class GoodixDfu:
             self.frames.put_nowait((typ, body))
 
     async def start(self):
+        if self.c.services.get_characteristic(OTA_TX) is None:
+            for sv in self.c.services:
+                print(f'service {sv.uuid}')
+                for ch in sv.characteristics:
+                    print(f'   car {ch.uuid} {",".join(ch.properties)}')
+            raise DfuError('service OTA Goodix absent (voir la liste ci-dessus)')
         await self.c.start_notify(OTA_TX, self._on_notify)
 
     async def send(self, typ, data=b''):
