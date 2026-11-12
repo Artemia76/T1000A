@@ -66,7 +66,7 @@ Numérotation du firmware Seeed : `0–31` = GPIO normale (masque `1<<n`), `0x20
 | NSS | GPIO6 (CS logiciel, au repos à 1) |
 | RESET | GPIO12 (au repos à 1) |
 | BUSY | GPIO13 (entrée) |
-| IRQ (DIO9) | AON1 (entrée, pull-up, front montant) |
+| IRQ (DIO9) | AON1 : **active à l’état bas, collecteur ouvert** (étage inverseur) → pull-up, front descendant. Mesuré sur le boîtier (hello-0.9). |
 
 Table des commutateurs RF (DIO5..DIO8), identique au T1000-E : enable `0x0F`, standby `0x00`,
 rx `0x09`, tx `0x0B`, tx_hp `0x0A`, tx_hf `0x00`, gnss `0x04`, wifi `0x00`.

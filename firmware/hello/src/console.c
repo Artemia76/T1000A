@@ -11,7 +11,7 @@
 #include <string.h>
 
 #define DEVICE_NAME     "T1000A-Test"
-#define FW_VERSION      "hello-0.9"
+#define FW_VERSION      "hello-0.10"
 
 extern uint32_t main_uptime_ms(void);
 

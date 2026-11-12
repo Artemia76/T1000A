@@ -53,7 +53,8 @@ uint32_t GR5515Hal::digitalRead(uint32_t pin)
     wdt_kick_rate_limited();          /* RadioLib attend BUSY en lisant la broche en boucle */
     app_io_type_t t; uint32_t m;
     if (pin == RADIOLIB_NC || !pin_decode(pin, &t, &m)) return 0;
-    return app_io_read_pin(t, m) == APP_IO_PIN_SET ? 1 : 0;
+    uint32_t v = app_io_read_pin(t, m) == APP_IO_PIN_SET ? 1 : 0;
+    return (pin == active_low_pin) ? !v : v;
 }
 
 /* Une seule interruption suffit (IRQ du LR1110, DIO9 sur AON1). */
@@ -72,8 +73,14 @@ void GR5515Hal::attachInterrupt(uint32_t interruptNum, void (*interruptCb)(void)
     s_irq_cb = interruptCb;
     app_io_init_t io;
     io.pin  = m;
-    io.mode = (mode == IRQ_FALLING) ? APP_IO_MODE_IT_FALLING : APP_IO_MODE_IT_RISING;
-    io.pull = APP_IO_PULLDOWN;
+    bool rising = (mode != IRQ_FALLING);
+    if (interruptNum == active_low_pin) {
+        rising = !rising;             /* niveau logique inversé sur la ligne */
+        io.pull = APP_IO_PULLUP;      /* collecteur ouvert : pull-up obligatoire */
+    } else {
+        io.pull = APP_IO_PULLDOWN;
+    }
+    io.mode = rising ? APP_IO_MODE_IT_RISING : APP_IO_MODE_IT_FALLING;
     io.mux  = APP_IO_MUX_7;
     app_io_event_register_cb(t, &io, io_evt, NULL);
 }

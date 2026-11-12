@@ -27,7 +27,9 @@ void console_printf(const char *fmt, ...);
 #define PIN_NSS   6
 #define PIN_RESET 12
 #define PIN_BUSY  13
-#define PIN_IRQ   0x21          /* AON1 = DIO9 */
+#define PIN_IRQ   0x21          /* AON1 = DIO9 via un étage inverseur : active à l'état bas, collecteur
+                                   ouvert (mesuré sur le boîtier avec hello-0.9 ; Seeed : pull-up, front
+                                   descendant) */
 #define PIN_RF_EN 14            /* mis à 1 par le firmware Seeed dans sa séquence radio (0x01036304) */
 
 #define TCXO_VOLTAGE 3.0f       /* firmware Seeed : code 6 = 3,0 V, démarrage 164 ticks */
@@ -107,6 +109,7 @@ static void radio_create(void)
 {
     if (s_radio) return;
     s_hal   = new (s_hal_mem) GR5515Hal();
+    s_hal->setActiveLow(PIN_IRQ);
     s_mod   = new (s_mod_mem) Module(s_hal, PIN_NSS, PIN_IRQ, PIN_RESET, PIN_BUSY);
     s_radio = new (s_radio_mem) LR1110(s_mod);
 }
@@ -233,22 +236,8 @@ extern "C" void radio_poll(void)
         }
         if (!rx_done) return;
         s_n_polled_rx++;
-        /* L'IRQ du LR1110 est active : on photographie les broches, on acquitte, on rephotographie.
-         * La broche qui change est la ligne d'interruption (et sa polarité). */
-        uint32_t g1, a1, g2, a2;
-        pins_snapshot(&g1, &a1);
-        uint32_t pt_active = pull_test(APP_IO_TYPE_AON, APP_IO_PIN_1);   /* AON1 avec IRQ active */
-        s_radio->clearIrqState(RADIOLIB_LR11X0_IRQ_ALL);
-        pins_snapshot(&g2, &a2);
-        uint32_t pt_idle = pull_test(APP_IO_TYPE_AON, APP_IO_PIN_1);     /* AON1 IRQ acquittée */
-        s_hal->attachInterrupt(PIN_IRQ, on_irq, 1);                      /* reconfiguration d'origine */
-        console_printf("AON1 [pull-up,pull-down] : IRQ active=%lu%lu, IRQ acquittee=%lu%lu "
-                       "(11=piloté haut, 00=piloté bas, 10=en l'air)\r\n",
-                       (unsigned long)(pt_active & 1), (unsigned long)(pt_active >> 1),
-                       (unsigned long)(pt_idle & 1), (unsigned long)(pt_idle >> 1));
-        console_printf("IRQ active : gpio=%08lx aon+msio=%04lx | apres acquit : gpio=%08lx aon+msio=%04lx | diff gpio=%08lx aon+msio=%04lx\r\n",
-                       (unsigned long)g1, (unsigned long)a1, (unsigned long)g2, (unsigned long)a2,
-                       (unsigned long)(g1 ^ g2), (unsigned long)(a1 ^ a2));
+        console_printf("(paquet vu par scrutation : la broche IRQ n'a pas declenche ; ligne=%lu)\r\n",
+                       (unsigned long)s_hal->digitalRead(PIN_IRQ));
     }
     s_irq = false;
     uint8_t buf[256];

@@ -39,7 +39,12 @@ public:
 
     int spiError() const { return spi_err; }
 
+    /* Déclare une broche « active à l'état bas, collecteur ouvert » (ex. IRQ du LR1110 sur le T1000-A,
+     * à travers un étage inverseur) : pull-up, front montant demandé → front descendant, lecture inversée. */
+    void setActiveLow(uint32_t pin) { active_low_pin = pin; }
+
 private:
     int spi_err = 0;
+    uint32_t active_low_pin = 0xFFFFFFFFu;
     bool spi_ready = false;
 };
