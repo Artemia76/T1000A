@@ -138,6 +138,8 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | DFU BLE à blanc (lecture seule) | OK : FastDfu v3, MTU 247 |
 | 2026-11-12 | Réinstallation du firmware Seeed v2.5 | OK, `AT+VER=?` → V2.5 |
 | 2026-11-12 | Firmware de test `hello-0.1` (oscillateur basse fréquence **interne**, `CFG_LPCLK_INTERNAL_EN 1`) | Flash OK, somme vérifiée. **Boucle de redémarrage toutes les ≈ 6 s** (LED 3 s allumée / 3 s éteinte), aucun BLE, bouton sans effet. |
+| 2026-11-12 | Récupération sans SWD | Le **bootloader Seeed passe en DFU BLE si le bouton est maintenu pendant le démarrage** (essais : appui continu ≈ 30 s, et/ou appui en posant le boîtier sur le cordon). Le DFU a été capté et `hello-0.2` flashé. |
+| 2026-11-12 | `hello-0.2` (quartz 32 kHz comme Seeed) | **OK** : annonce BLE `T1000A-Test` (adresse FD:28:17:38:7A:8F, différente de celle du firmware Seeed), console GUS, `ble_etape=3`, `ble_err=0`. |
 
 ### Analyse de l'échec de `hello-0.1`
 
@@ -148,7 +150,9 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 - L'émulateur n'a pas vu le problème : il modélise la calibration comme « terminée ».
 - Le firmware Seeed utilise le **quartz 32 kHz** (`platform_clock_init(0, RTC_OSC_CLK, 500, 0)` à `0x01047C12`).
   `hello-0.2` s'aligne dessus.
-- Le connecteur magnétique n'a que 2 plots (alimentation) : pas d'accès UART. Récupération prévue par SWD (boîtier ouvert).
+- Le connecteur magnétique n'a que 2 plots (alimentation) : pas d'accès UART.
+- **Filet de sécurité matériel découvert** : bouton maintenu au démarrage → DFU du bootloader, indépendamment de l'application.
+  À caractériser précisément (durée d'appui, moment).
 
 **Leçon** : tout réglage du démarrage (horloges, alimentation, Flash) doit être **identique à celui du firmware Seeed**,
 puisque cette phase précède toute sécurité logicielle. Vérifier ces réglages par rétro-ingénierie avant chaque flash.
