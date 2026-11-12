@@ -63,11 +63,15 @@ static GR5515Hal *s_hal;
 static Module    *s_mod;
 static LR1110    *s_radio;
 
-static volatile bool s_irq;
+static volatile bool     s_irq;
+static volatile uint32_t s_irq_hits;      /* interruptions remontées par la broche AON1 */
 static bool     s_rx_on;
 static uint32_t s_rx_count, s_rx_err;
+/* Compteurs de la scrutation de secours (registre d'IRQ du LR1110 lu directement) */
+static uint32_t s_n_preamble, s_n_header, s_n_hdr_err, s_n_crc_err, s_n_polled_rx;
+static uint32_t s_last_poll_ms;
 
-static void on_irq(void) { s_irq = true; }
+static void on_irq(void) { s_irq = true; s_irq_hits++; }
 
 extern "C" int radio_active(void) { return s_radio != nullptr; }
 
@@ -127,7 +131,11 @@ static void print_version(void)
 static void start_rx(void)
 {
     s_irq = false;
-    int16_t st = s_radio->startReceive();
+    /* Comme MeshCore : on ajoute « préambule détecté » et « en-tête valide » aux IRQ signalées. */
+    int16_t st = s_radio->startReceive(RADIOLIB_LR11X0_RX_TIMEOUT_INF,
+                                       RADIOLIB_IRQ_RX_DEFAULT_FLAGS | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED)
+                                           | (1UL << RADIOLIB_IRQ_HEADER_VALID),
+                                       RADIOLIB_IRQ_RX_DEFAULT_MASK, 0);
     s_rx_on = (st == RADIOLIB_ERR_NONE);
     console_printf("ecoute : etat=%d\r\n", st);
 }
@@ -163,6 +171,11 @@ extern "C" void radio_cmd(int argc, char **argv)
         console_printf("ecoute=%d recus=%lu erreurs=%lu rssi_instantane=%.1f dBm\r\n", s_rx_on,
                        (unsigned long)s_rx_count, (unsigned long)s_rx_err,
                        (double)s_radio->getRSSI(false));
+        console_printf("irq_lr=0x%08lx broche_irq=%lu irq_broche=%lu | preambules=%lu entetes=%lu "
+                       "err_entete=%lu err_crc=%lu rx_par_scrutation=%lu\r\n",
+                       (unsigned long)s_radio->getIrqStatus(), (unsigned long)s_hal->digitalRead(PIN_IRQ),
+                       (unsigned long)s_irq_hits, (unsigned long)s_n_preamble, (unsigned long)s_n_header,
+                       (unsigned long)s_n_hdr_err, (unsigned long)s_n_crc_err, (unsigned long)s_n_polled_rx);
     } else {
         console_printf("lr init [MHz BW SF CR] | ver | rx | tx <texte> | stat\r\n");
     }
@@ -170,7 +183,29 @@ extern "C" void radio_cmd(int argc, char **argv)
 
 extern "C" void radio_poll(void)
 {
-    if (!s_radio || !s_irq) return;
+    if (!s_radio || !s_rx_on) return;
+    /* Scrutation de secours toutes les 100 ms : distingue « paquet non reçu » de « IRQ non remontée ». */
+    if (!s_irq) {
+        uint32_t now = (uint32_t)s_hal->millis();
+        if (now - s_last_poll_ms < 100) return;
+        s_last_poll_ms = now;
+        uint32_t irq = s_radio->getIrqStatus();
+        bool rx_done = irq & RADIOLIB_LR11X0_IRQ_RX_DONE;
+        if (irq & RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED)      s_n_preamble++;
+        if (irq & RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID) s_n_header++;
+        if (irq & RADIOLIB_LR11X0_IRQ_HEADER_ERR)             s_n_hdr_err++;
+        if (irq & RADIOLIB_LR11X0_IRQ_CRC_ERR)                s_n_crc_err++;
+        if (irq & (RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED | RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID)) {
+            if (!rx_done) s_radio->clearIrqState(RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED
+                                                 | RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID);
+        }
+        if (irq & (RADIOLIB_LR11X0_IRQ_HEADER_ERR | RADIOLIB_LR11X0_IRQ_CRC_ERR)) {
+            console_printf("RX incomplet : irq=0x%08lx\r\n", (unsigned long)irq);
+            s_radio->clearIrqState(RADIOLIB_LR11X0_IRQ_HEADER_ERR | RADIOLIB_LR11X0_IRQ_CRC_ERR);
+        }
+        if (!rx_done) return;
+        s_n_polled_rx++;
+    }
     s_irq = false;
     uint8_t buf[256];
     size_t len = s_radio->getPacketLength();

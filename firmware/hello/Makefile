@@ -69,7 +69,7 @@ CXXFLAGS := -std=gnu++17 -Os -g -fno-strict-aliasing $(CPUFLAGS) -ffunction-sect
           -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
           -Wall -Wno-unused-function -Wno-unused-variable -Wno-format -Wno-sign-compare \
           -Wno-missing-field-initializers -Wno-register -Wno-volatile \
-          -DRADIOLIB_STATIC_ONLY=1 $(addprefix -I,$(INC))
+          -DRADIOLIB_STATIC_ONLY=1 -DRADIOLIB_LOW_LEVEL=1 $(addprefix -I,$(INC))
 LDFLAGS := $(CPUFLAGS) -specs=nosys.specs -Wl,--gc-sections -T gr5515_t1000a.lds \
            $(SDK)/platform/soc/linker/gcc/rom_symbol_gcc.txt \
            -L$(SDK)/components/libraries/app_crypto/gcc -lapp_crypto \
