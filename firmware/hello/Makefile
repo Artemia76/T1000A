@@ -8,6 +8,17 @@ SDK      ?= $(ROOT)/third_party/gr551x-sdk
 BUILD    ?= build
 MKIMAGE  := python3 -I $(ROOT)/tools/mkimage.py
 
+RADIOLIB ?= $(ROOT)/third_party/radiolib/src
+
+SRC_CPP := src/radio_hal.cpp src/radio_test.cpp \
+  $(RADIOLIB)/Module.cpp $(RADIOLIB)/Hal.cpp \
+  $(RADIOLIB)/modules/LR11x0/LR11x0.cpp $(RADIOLIB)/modules/LR11x0/LR11x0_commands.cpp \
+  $(RADIOLIB)/modules/LR11x0/LR_common.cpp $(RADIOLIB)/modules/LR11x0/LR1110.cpp \
+  $(RADIOLIB)/modules/LR11x0/LR11x0_wifi.cpp $(RADIOLIB)/modules/LR11x0/LR11x0_gnss.cpp \
+  $(RADIOLIB)/modules/LR11x0/LR11x0_crypto.cpp \
+  $(RADIOLIB)/protocols/PhysicalLayer/PhysicalLayer.cpp \
+  $(RADIOLIB)/utils/Utils.cpp $(RADIOLIB)/utils/CRC.cpp
+
 SRC_C := \
   src/main.c src/board.c src/safety.c src/console.c \
   $(SDK)/platform/soc/common/gr_system.c \
@@ -18,6 +29,8 @@ SRC_C := \
   $(SDK)/drivers/src/app_gpiote.c \
   $(SDK)/drivers/src/app_pwr_mgmt.c \
   $(SDK)/drivers/src/app_aon_wdt.c \
+  $(SDK)/drivers/src/app_spi.c \
+  $(SDK)/drivers/src/app_dma.c \
   $(SDK)/components/libraries/utility/utility.c \
   $(SDK)/components/libraries/pmu_calibration/pmu_calibration.c \
   $(SDK)/components/libraries/app_timer/app_timer.c \
@@ -30,7 +43,7 @@ SRC_C := \
 
 SRC_S := $(SDK)/platform/arch/arm/cortex-m/gcc/startup_gr55xx.s
 
-INC := src \
+INC := src $(RADIOLIB) \
   $(SDK)/components/libraries/app_assert $(SDK)/components/libraries/app_error \
   $(SDK)/components/libraries/app_log $(SDK)/components/libraries/app_timer \
   $(SDK)/components/libraries/hal_flash $(SDK)/components/libraries/pmu_calibration \
@@ -45,18 +58,26 @@ INC := src \
 
 CROSS  := arm-none-eabi-
 CC     := $(CROSS)gcc
+CXX    := $(CROSS)g++
+SHELL  := /bin/bash
 CPUFLAGS := -mthumb -mcpu=cortex-m4 -mfloat-abi=softfp -mfpu=fpv4-sp-d16
 CFLAGS := -std=gnu99 -Os -g -fno-strict-aliasing $(CPUFLAGS) -ffunction-sections -fdata-sections -MD \
           -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-format \
           $(addprefix -I,$(INC))
-LDFLAGS := $(CPUFLAGS) -Wl,--gc-sections -T gr5515_t1000a.lds \
+CXXFLAGS := -std=gnu++17 -Os -g -fno-strict-aliasing $(CPUFLAGS) -ffunction-sections -fdata-sections -MD \
+          -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
+          -Wall -Wno-unused-function -Wno-unused-variable -Wno-format -Wno-sign-compare \
+          -Wno-missing-field-initializers -Wno-register -Wno-volatile \
+          -DRADIOLIB_STATIC_ONLY=1 $(addprefix -I,$(INC))
+LDFLAGS := $(CPUFLAGS) -specs=nosys.specs -Wl,--gc-sections -T gr5515_t1000a.lds \
            $(SDK)/platform/soc/linker/gcc/rom_symbol_gcc.txt \
            -L$(SDK)/components/libraries/app_crypto/gcc -lapp_crypto \
            -L$(SDK)/platform/soc/linker/gcc -lble_sdk \
            -Wl,-Map=$(BUILD)/$(TARGET).map
 
-OBJ := $(addprefix $(BUILD)/obj/,$(notdir $(SRC_C:.c=.o) $(SRC_S:.s=.o)))
+OBJ := $(addprefix $(BUILD)/obj/,$(notdir $(SRC_C:.c=.o) $(SRC_CPP:.cpp=.o) $(SRC_S:.s=.o)))
 vpath %.c $(sort $(dir $(SRC_C)))
+vpath %.cpp $(sort $(dir $(SRC_CPP)))
 vpath %.s $(sort $(dir $(SRC_S)))
 
 all: $(BUILD)/$(TARGET)_dfu.bin
@@ -65,13 +86,20 @@ $(BUILD)/obj/%.o: %.c | $(BUILD)/obj
 	@echo "  CC  $(notdir $<)"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/obj/%.o: %.cpp | $(BUILD)/obj
+	@echo "  CXX $(notdir $<)"
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
+
 $(BUILD)/obj/%.o: %.s | $(BUILD)/obj
 	@echo "  AS  $(notdir $<)"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/$(TARGET).elf: $(OBJ) gr5515_t1000a.lds
 	@echo "  LD  $@"
-	@$(CC) $(OBJ) $(LDFLAGS) -o $@ 2>&1 | grep -v "Forcing branch to absolute symbol" || true
+	@$(CXX) $(OBJ) $(LDFLAGS) -o $@ > $(BUILD)/ld.log 2>&1; st=$$?; \
+	  grep -v -e "Forcing branch to absolute symbol" -e "is not implemented and will always fail" \
+	          -e "does not take linker garbage collection" -e "in function \`_" $(BUILD)/ld.log; \
+	  if [ $$st -ne 0 ]; then rm -f $@; exit $$st; fi
 	@$(CROSS)size $@
 
 $(BUILD)/$(TARGET).bin: $(BUILD)/$(TARGET).elf

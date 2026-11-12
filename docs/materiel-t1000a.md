@@ -166,3 +166,11 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 
 **Leçon** : tout réglage du démarrage (horloges, alimentation, Flash) doit être **identique à celui du firmware Seeed**,
 puisque cette phase précède toute sécurité logicielle. Vérifier ces réglages par rétro-ingénierie avant chaque flash.
+
+## Notes de compilation C++ (RadioLib)
+
+- Le démarrage GCC du SDK n'exécute pas `.init_array`, et cette table contient aussi `system_platform_init`
+  (marquée constructeur dans le SDK). **Ne jamais appeler `__libc_init_array()`** : on relancerait l'initialisation
+  de la plateforme. Les objets C++ sont construits à la demande (placement `new`). Seul constructeur global de
+  RadioLib embarqué : `RadioLibCRCInstance`, inutilisé par le pilote LR11x0 (code commenté dans `LR11x0_commands.cpp`).
+- Bogue du SDK : `drivers/inc/hal/gr55xx_ll_bod.h` ouvre `extern "C" {` sans le refermer ; `radio_hal.cpp` le referme.

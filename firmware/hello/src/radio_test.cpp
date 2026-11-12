@@ -1,0 +1,166 @@
+/*
+ * Mise en route du LR1110 avec RadioLib, pilotée depuis la console BLE.
+ *
+ *   lr init [MHz BW SF CR]   initialise la radio (défaut : préréglage MeshCore EU 869.618 / 62.5 / 8 / 8)
+ *   lr ver                   version du LR1110
+ *   lr rx                    écoute continue ; chaque paquet est affiché (RSSI, SNR, octets)
+ *   lr tx <texte>            émet un paquet (puissance faible), puis reprend l'écoute
+ *   lr stat                  état et compteurs
+ *
+ * Paramètres repris de MeshCore (variante T1000-E) sauf le TCXO : 3,0 V comme le firmware Seeed du T1000-A.
+ */
+#include "radio_hal.h"
+#include "radio_test.h"
+#include <new>
+#include <stdlib.h>
+#include <string.h>
+
+extern "C" {
+void console_printf(const char *fmt, ...);
+}
+
+/* Brochage LR1110 (docs/materiel-t1000a.md) */
+#define PIN_NSS   6
+#define PIN_RESET 12
+#define PIN_BUSY  13
+#define PIN_IRQ   0x21          /* AON1 = DIO9 */
+
+#define TCXO_VOLTAGE 3.0f       /* firmware Seeed : code 6 = 3,0 V, démarrage 164 ticks */
+#define SYNC_WORD    RADIOLIB_LR11X0_LORA_SYNC_WORD_PRIVATE
+#define PREAMBLE_LEN 16
+#define TX_POWER_DBM 10
+
+/* Niveaux des DIO de commutation RF (broches internes du LR1110, pas des GPIO du MCU). */
+#ifndef LOW
+#define LOW  0
+#define HIGH 1
+#endif
+
+static const uint32_t rfswitch_dios[Module::RFSWITCH_MAX_PINS] = {
+    RADIOLIB_LR11X0_DIO5, RADIOLIB_LR11X0_DIO6, RADIOLIB_LR11X0_DIO7, RADIOLIB_LR11X0_DIO8, RADIOLIB_NC,
+};
+
+/* Table identique au T1000-E, confirmée dans le firmware Seeed du T1000-A (0x0105E52A). */
+static const Module::RfSwitchMode_t rfswitch_table[] = {
+    // mode                  DIO5        DIO6        DIO7        DIO8
+    { LR11x0::MODE_STBY,   { LOW,  LOW,  LOW,  LOW  } },
+    { LR11x0::MODE_RX,     { HIGH, LOW,  LOW,  HIGH } },
+    { LR11x0::MODE_TX,     { HIGH, HIGH, LOW,  HIGH } },
+    { LR11x0::MODE_TX_HP,  { LOW,  HIGH, LOW,  HIGH } },
+    { LR11x0::MODE_TX_HF,  { LOW,  LOW,  LOW,  LOW  } },
+    { LR11x0::MODE_GNSS,   { LOW,  LOW,  HIGH, LOW  } },
+    { LR11x0::MODE_WIFI,   { LOW,  LOW,  LOW,  LOW  } },
+    END_OF_MODE_TABLE,
+};
+
+/* Objets construits à la demande (le démarrage GCC du SDK n'appelle pas les constructeurs globaux). */
+alignas(8) static uint8_t s_hal_mem[sizeof(GR5515Hal)];
+alignas(8) static uint8_t s_mod_mem[sizeof(Module)];
+alignas(8) static uint8_t s_radio_mem[sizeof(LR1110)];
+static GR5515Hal *s_hal;
+static Module    *s_mod;
+static LR1110    *s_radio;
+
+static volatile bool s_irq;
+static bool     s_rx_on;
+static uint32_t s_rx_count, s_rx_err;
+
+static void on_irq(void) { s_irq = true; }
+
+extern "C" int radio_active(void) { return s_radio != nullptr; }
+
+static void radio_create(void)
+{
+    if (s_radio) return;
+    s_hal   = new (s_hal_mem) GR5515Hal();
+    s_mod   = new (s_mod_mem) Module(s_hal, PIN_NSS, PIN_IRQ, PIN_RESET, PIN_BUSY);
+    s_radio = new (s_radio_mem) LR1110(s_mod);
+}
+
+static int16_t radio_begin(float mhz, float bw, uint8_t sf, uint8_t cr)
+{
+    radio_create();
+    s_radio->setRfSwitchTable(rfswitch_dios, rfswitch_table);
+    int16_t st = s_radio->begin(mhz, bw, sf, cr, SYNC_WORD, TX_POWER_DBM, PREAMBLE_LEN, TCXO_VOLTAGE);
+    if (st != RADIOLIB_ERR_NONE) return st;
+    st = s_radio->setRegulatorDCDC();               if (st) return st;
+    st = s_radio->setCRC(2);                        if (st) return st;
+    st = s_radio->explicitHeader();                 if (st) return st;
+    st = s_radio->setRxBoostedGainMode(true);       if (st) return st;
+    s_radio->setPacketReceivedAction(on_irq);
+    return RADIOLIB_ERR_NONE;
+}
+
+static void print_version(void)
+{
+    LR11x0VersionInfo_t v;
+    memset(&v, 0, sizeof(v));
+    int16_t st = s_radio->getVersionInfo(&v);
+    console_printf("LR11x0 : etat=%d materiel=0x%02x type=0x%02x (1=LR1110) firmware=%u.%u\r\n",
+                   st, v.hardware, v.device, v.fwMajor, v.fwMinor);
+}
+
+static void start_rx(void)
+{
+    s_irq = false;
+    int16_t st = s_radio->startReceive();
+    s_rx_on = (st == RADIOLIB_ERR_NONE);
+    console_printf("ecoute : etat=%d\r\n", st);
+}
+
+extern "C" void radio_cmd(int argc, char **argv)
+{
+    const char *sub = argc > 1 ? argv[1] : "stat";
+
+    if (!strcmp(sub, "init")) {
+        float mhz = argc > 2 ? strtof(argv[2], NULL) : 869.618f;
+        float bw  = argc > 3 ? strtof(argv[3], NULL) : 62.5f;
+        int   sf  = argc > 4 ? atoi(argv[4]) : 8;
+        int   cr  = argc > 5 ? atoi(argv[5]) : 8;
+        int16_t st = radio_begin(mhz, bw, (uint8_t)sf, (uint8_t)cr);
+        console_printf("init %.3f MHz BW%.1f SF%d CR%d : etat=%d spi=%d\r\n",
+                       (double)mhz, (double)bw, sf, cr, st, s_hal ? s_hal->spiError() : -1);
+        if (st == RADIOLIB_ERR_NONE) print_version();
+        return;
+    }
+    if (!s_radio) { console_printf("radio non initialisee : lr init\r\n"); return; }
+
+    if (!strcmp(sub, "ver")) {
+        print_version();
+    } else if (!strcmp(sub, "rx")) {
+        start_rx();
+    } else if (!strcmp(sub, "tx") && argc > 2) {
+        s_rx_on = false;
+        size_t n = strlen(argv[2]);
+        int16_t st = s_radio->transmit((uint8_t *)argv[2], n);
+        console_printf("emission %u octets : etat=%d\r\n", (unsigned)n, st);
+        start_rx();
+    } else if (!strcmp(sub, "stat")) {
+        console_printf("ecoute=%d recus=%lu erreurs=%lu rssi_instantane=%.1f dBm\r\n", s_rx_on,
+                       (unsigned long)s_rx_count, (unsigned long)s_rx_err,
+                       (double)s_radio->getRSSI(false));
+    } else {
+        console_printf("lr init [MHz BW SF CR] | ver | rx | tx <texte> | stat\r\n");
+    }
+}
+
+extern "C" void radio_poll(void)
+{
+    if (!s_radio || !s_irq) return;
+    s_irq = false;
+    uint8_t buf[256];
+    size_t len = s_radio->getPacketLength();
+    if (len > sizeof(buf)) len = sizeof(buf);
+    int16_t st = s_radio->readData(buf, len);
+    if (st == RADIOLIB_ERR_NONE) {
+        s_rx_count++;
+        console_printf("RX %u octets RSSI=%.1f SNR=%.1f :", (unsigned)len,
+                       (double)s_radio->getRSSI(), (double)s_radio->getSNR());
+        for (size_t i = 0; i < len && i < 48; i++) console_printf(" %02x", buf[i]);
+        console_printf(len > 48 ? " ...\r\n" : "\r\n");
+    } else {
+        s_rx_err++;
+        console_printf("RX erreur %d\r\n", st);
+    }
+    if (s_rx_on) s_radio->startReceive();
+}

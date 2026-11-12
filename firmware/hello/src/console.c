@@ -1,6 +1,7 @@
 #include "console.h"
 #include "board.h"
 #include "safety.h"
+#include "radio_test.h"
 #include "gus.h"
 #include "app_io.h"
 #include <stdarg.h>
@@ -9,7 +10,7 @@
 #include <string.h>
 
 #define DEVICE_NAME     "T1000A-Test"
-#define FW_VERSION      "hello-0.3"
+#define FW_VERSION      "hello-0.4"
 
 extern uint32_t main_uptime_ms(void);
 
@@ -127,14 +128,14 @@ static int pin_decode(long n, app_io_type_t *type, uint32_t *mask)
 
 static void cmd_exec(char *line)
 {
-    char *argv[4] = {0};
+    char *argv[8] = {0};
     int argc = 0;
-    for (char *tok = strtok(line, " "); tok && argc < 4; tok = strtok(NULL, " ")) argv[argc++] = tok;
+    for (char *tok = strtok(line, " "); tok && argc < 8; tok = strtok(NULL, " ")) argv[argc++] = tok;
     if (!argc) return;
 
     if (!strcmp(argv[0], "help")) {
         console_printf("commandes : info, led on|off, btn, pin <n> (lecture), "
-                       "out <n> 0|1, reboot, dfu\r\n"
+                       "out <n> 0|1, lr (radio), reboot, dfu\r\n"
                        "broches : 0-31 GPIO, 0x20+n AON, 0x30+n MSIO\r\n");
     } else if (!strcmp(argv[0], "info")) {
         console_printf("%s  uptime=%lus  demarrages_sans_ble=%lu  ble_etape=%u  ble_err=0x%04x\r\n", FW_VERSION,
@@ -158,6 +159,8 @@ static void cmd_exec(char *line)
         app_io_init(t, &io);
         app_io_write_pin(t, m, atoi(argv[2]) ? APP_IO_PIN_SET : APP_IO_PIN_RESET);
         console_printf("pin 0x%02lx <- %d\r\n", n, atoi(argv[2]) != 0);
+    } else if (!strcmp(argv[0], "lr")) {
+        radio_cmd(argc, argv);
     } else if (!strcmp(argv[0], "reboot")) {
         safety_reboot();
     } else if (!strcmp(argv[0], "dfu")) {

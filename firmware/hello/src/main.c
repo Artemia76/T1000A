@@ -16,6 +16,7 @@
 #include "board.h"
 #include "console.h"
 #include "safety.h"
+#include "radio_test.h"
 
 STACK_HEAP_INIT(heaps_table);
 
@@ -81,7 +82,11 @@ int main(void)
             tick_process();
         }
         console_poll();
+        radio_poll();
         safety_poll(s_uptime_ms);
+        if (radio_active()) {
+            pwr_mgmt_mode_set(PMR_MGMT_ACTIVE_MODE);   /* le compteur DWT s'arrête en veille */
+        }
         pwr_mgmt_schedule();
     }
 }
