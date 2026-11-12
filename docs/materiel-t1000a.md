@@ -130,3 +130,25 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 .claude-work/.venv/bin/python -I tools/t1000_ble.py at 'AT+VER=?'
 .claude-work/.venv/bin/python -I tools/t1000_ble.py flash FICHIER_dfu.bin --enter-dfu <nom>-T1000 [--dry-run]
 ```
+
+## Journal des essais sur le boîtier
+
+| Date | Essai | Résultat |
+|---|---|---|
+| 2026-11-12 | DFU BLE à blanc (lecture seule) | OK : FastDfu v3, MTU 247 |
+| 2026-11-12 | Réinstallation du firmware Seeed v2.5 | OK, `AT+VER=?` → V2.5 |
+| 2026-11-12 | Firmware de test `hello-0.1` (oscillateur basse fréquence **interne**, `CFG_LPCLK_INTERNAL_EN 1`) | Flash OK, somme vérifiée. **Boucle de redémarrage toutes les ≈ 6 s** (LED 3 s allumée / 3 s éteinte), aucun BLE, bouton sans effet. |
+
+### Analyse de l'échec de `hello-0.1`
+
+- `platform_init_push()` (SDK) arme le chien de garde AON pour `0x18000` ticks = **3,0 s** pendant l'initialisation de la
+  plateforme, avant `main`. Les 3 s de LED éteinte correspondent à ce délai : l'initialisation ne se termine pas avec
+  l'oscillateur interne (`platform_clock_init_rng(…, RNG_OSC_CLK2, …)`) et le chien de garde relance la puce.
+- Nos sécurités (compteur de démarrages, bouton, BLE) s'exécutent dans `main` : elles ne sont jamais atteintes.
+- L'émulateur n'a pas vu le problème : il modélise la calibration comme « terminée ».
+- Le firmware Seeed utilise le **quartz 32 kHz** (`platform_clock_init(0, RTC_OSC_CLK, 500, 0)` à `0x01047C12`).
+  `hello-0.2` s'aligne dessus.
+- Le connecteur magnétique n'a que 2 plots (alimentation) : pas d'accès UART. Récupération prévue par SWD (boîtier ouvert).
+
+**Leçon** : tout réglage du démarrage (horloges, alimentation, Flash) doit être **identique à celui du firmware Seeed**,
+puisque cette phase précède toute sécurité logicielle. Vérifier ces réglages par rétro-ingénierie avant chaque flash.
