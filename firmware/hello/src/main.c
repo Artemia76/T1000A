@@ -6,6 +6,7 @@
  *   - LED : clignotement bref toutes les 2 s (vivant) ; allumée tant que le bouton est appuyé ;
  *     allumée fixe 1 s juste avant le passage en DFU.
  *   - Bouton maintenu 6 s → DFU.
+ *   - Sans connexion BLE pendant 5 min : redémarrage compté ; au 3e démarrage sans connexion → DFU.
  *   - Console BLE « T1000A-Test » (service GUS) : help, info, dfu, reboot, led, btn, pin, out.
  */
 #include "gr_includes.h"

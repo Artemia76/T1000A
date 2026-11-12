@@ -5,12 +5,13 @@
 #include "gr55xx_hal.h"
 #include "gr55xx_delay.h"
 
-#define BOOT_GUARD_MAX_FAST_BOOTS   3        /* au 3e démarrage rapide consécutif → DFU */
-#define BOOT_GUARD_STABLE_MS        60000u   /* durée de fonctionnement considérée stable */
+#define BOOT_GUARD_MAX_FAST_BOOTS   3        /* au 3e démarrage sans connexion BLE entre-temps → DFU */
+#define NO_BLE_REBOOT_MS            (5u * 60u * 1000u)   /* sans connexion BLE : redémarrage compté */
 #define WDT_TIMEOUT_TICKS           (8u * 32768u)   /* environ 8 s sur l'horloge lente */
 
 static uint32_t s_boot_count;
 static int      s_guard_cleared;
+static int      s_ble_seen;
 static int      s_wdt_on;
 static app_aon_wdt_params_t s_wdt;
 
@@ -105,14 +106,31 @@ void safety_boot(void)
     }
 }
 
+/* Redémarrage qui CONSERVE le compteur : le démarrage suivant sera compté. */
+static void reboot_counted(void)
+{
+    __disable_irq();
+    wdt_stop();
+    hal_nvic_system_reset();
+    while (1) {}
+}
+
+void safety_ble_connected(void)
+{
+    s_ble_seen = 1;
+    if (!s_guard_cleared) {
+        guard_clear();
+        s_guard_cleared = 1;
+    }
+}
+
 void safety_poll(uint32_t uptime_ms)
 {
     if (s_wdt_on) {
         app_aon_wdt_refresh();
     }
-    if (!s_guard_cleared && uptime_ms >= BOOT_GUARD_STABLE_MS) {
-        guard_clear();
-        s_guard_cleared = 1;
+    if (!s_ble_seen && uptime_ms >= NO_BLE_REBOOT_MS) {
+        reboot_counted();
     }
 }
 

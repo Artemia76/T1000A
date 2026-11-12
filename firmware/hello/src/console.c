@@ -217,6 +217,7 @@ void ble_evt_handler(const ble_evt_t *p_evt)
         ble_app_init();
         break;
     case BLE_GAPC_EVT_CONNECTED:
+        safety_ble_connected();
         s_conn_idx = p_evt->evt.gapc_evt.index;
         s_mtu = 23;
         s_tx_inflight = 0;
