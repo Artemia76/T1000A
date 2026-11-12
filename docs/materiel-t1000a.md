@@ -106,6 +106,14 @@ La séquence d'initialisation est exactement celle du T1000-E (EN, VRTC_EN, RESE
 | Détection du câble console | GPIO11 (`0x0b` = UART0 RX) lu en entrée pull-up au démarrage, juste avant l'init de l'UART0 (même fonction que les chaînes « Tracker T1000-A/B [Test] ») | probable |
 | ADC (batterie / capteurs) | MSIO2 (mux 7) | probable |
 
+## Récupération d'urgence (validée le 2026-11-12)
+
+Si l'application ne répond plus (aucun BLE, bouton sans effet, boucle de redémarrage) :
+
+1. lancer sur le PC `tools/t1000_ble.py flash <image>_dfu.bin --name SENSECAP_GR_DFU -t 600` ;
+2. débrancher le cordon magnétique, **maintenir le bouton**, rebrancher le cordon en gardant l'appui quelques secondes ;
+3. le bootloader s'annonce en `SENSECAP_GR_DFU_xxxx` (fenêtre ≈ 3 min) et l'outil flashe l'image.
+
 ## Mise à jour par Bluetooth depuis un PC (validée sur le boîtier le 2026-11-12)
 
 Outil : `tools/t1000_ble.py` (Python + bleak, BlueZ). Le T1000-A n'a pas de port série.
@@ -138,7 +146,7 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | DFU BLE à blanc (lecture seule) | OK : FastDfu v3, MTU 247 |
 | 2026-11-12 | Réinstallation du firmware Seeed v2.5 | OK, `AT+VER=?` → V2.5 |
 | 2026-11-12 | Firmware de test `hello-0.1` (oscillateur basse fréquence **interne**, `CFG_LPCLK_INTERNAL_EN 1`) | Flash OK, somme vérifiée. **Boucle de redémarrage toutes les ≈ 6 s** (LED 3 s allumée / 3 s éteinte), aucun BLE, bouton sans effet. |
-| 2026-11-12 | Récupération sans SWD | Le **bootloader Seeed passe en DFU BLE si le bouton est maintenu pendant le démarrage** (essais : appui continu ≈ 30 s, et/ou appui en posant le boîtier sur le cordon). Le DFU a été capté et `hello-0.2` flashé. |
+| 2026-11-12 | Récupération sans SWD | **Brancher l'alimentation (cordon magnétique) en maintenant le bouton appuyé → bootloader en DFU BLE** (`SENSECAP_GR_DFU_xxxx`), quel que soit l'état de l'application. L'appui continu seul (≈ 30 s) n'avait pas suffi. Le DFU a été capté et `hello-0.2` flashé. |
 | 2026-11-12 | `hello-0.2` (quartz 32 kHz comme Seeed) | **OK** : annonce BLE `T1000A-Test` (adresse FD:28:17:38:7A:8F, différente de celle du firmware Seeed), console GUS, `ble_etape=3`, `ble_err=0`. |
 
 ### Analyse de l'échec de `hello-0.1`
@@ -151,8 +159,8 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 - Le firmware Seeed utilise le **quartz 32 kHz** (`platform_clock_init(0, RTC_OSC_CLK, 500, 0)` à `0x01047C12`).
   `hello-0.2` s'aligne dessus.
 - Le connecteur magnétique n'a que 2 plots (alimentation) : pas d'accès UART.
-- **Filet de sécurité matériel découvert** : bouton maintenu au démarrage → DFU du bootloader, indépendamment de l'application.
-  À caractériser précisément (durée d'appui, moment).
+- **Filet de sécurité matériel découvert** : bouton maintenu **pendant le branchement de l'alimentation** → DFU du
+  bootloader, indépendamment de l'application (même si elle redémarre en boucle avant `main`).
 
 **Leçon** : tout réglage du démarrage (horloges, alimentation, Flash) doit être **identique à celui du firmware Seeed**,
 puisque cette phase précède toute sécurité logicielle. Vérifier ces réglages par rétro-ingénierie avant chaque flash.
