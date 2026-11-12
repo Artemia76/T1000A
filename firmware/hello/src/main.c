@@ -3,7 +3,8 @@
  * But : valider la chaîne compilation → image → DFU BLE → démarrage, et le retour au DFU.
  *
  * Comportement :
- *   - LED : clignotement bref toutes les 2 s (vivant) ; allumée tant que le bouton est appuyé ;
+ *   - LED : toutes les 2 s, 1/2/3 flashs = étape BLE (1 pile pas prête, 2 pile prête, 3 annonce
+ *     active) ; clignotement rapide = erreur BLE ; allumée tant que le bouton est appuyé ;
  *     allumée fixe 1 s juste avant le passage en DFU.
  *   - Bouton maintenu 6 s → DFU.
  *   - Sans connexion BLE pendant 5 min : redémarrage compté ; au 3e démarrage sans connexion → DFU.
@@ -53,7 +54,13 @@ static void tick_process(void)
         return;
     }
     btn_held_ms = 0;
-    board_led_set((s_uptime_ms % HEARTBEAT_MS) < TICK_MS * 2);
+    if (g_ble_err) {                         /* erreur BLE : clignotement rapide (5 Hz) */
+        board_led_set((s_uptime_ms / 100) & 1);
+        return;
+    }
+    /* battement : g_ble_stage flashs de 100 ms espacés de 200 ms, toutes les 2 s */
+    uint32_t t = s_uptime_ms % HEARTBEAT_MS;
+    board_led_set(t < g_ble_stage * 300u && (t % 300u) < 100u);
 }
 
 int main(void)
@@ -61,7 +68,8 @@ int main(void)
     board_init();
     safety_boot();                  /* peut basculer en DFU après plusieurs plantages */
 
-    ble_stack_init(ble_evt_handler, &heaps_table);
+    sdk_err_t e = ble_stack_init(ble_evt_handler, &heaps_table);
+    if (e) ble_diag_err(0x0700 | (e & 0xFF));
     pwr_mgmt_mode_set(PMR_MGMT_IDLE_MODE);
 
     app_timer_create(&s_tick_timer, ATIMER_REPEAT, tick_cb);

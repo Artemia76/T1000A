@@ -9,9 +9,19 @@
 #include <string.h>
 
 #define DEVICE_NAME     "T1000A-Test"
-#define FW_VERSION      "hello-0.1"
+#define FW_VERSION      "hello-0.2"
 
 extern uint32_t main_uptime_ms(void);
+
+/* ---- Diagnostic ---------------------------------------------------------- */
+
+volatile uint8_t  g_ble_stage = 1;
+volatile uint16_t g_ble_err;
+
+void ble_diag_err(uint16_t code)
+{
+    if (code && !g_ble_err) g_ble_err = code;
+}
 
 /* ---- Publicité / GAP ---------------------------------------------------- */
 
@@ -122,8 +132,9 @@ static void cmd_exec(char *line)
                        "out <n> 0|1, reboot, dfu\r\n"
                        "broches : 0-31 GPIO, 0x20+n AON, 0x30+n MSIO\r\n");
     } else if (!strcmp(argv[0], "info")) {
-        console_printf("%s  uptime=%lus  demarrages_rapides=%lu\r\n", FW_VERSION,
-                       (unsigned long)(main_uptime_ms() / 1000), (unsigned long)safety_boot_count());
+        console_printf("%s  uptime=%lus  demarrages_sans_ble=%lu  ble_etape=%u  ble_err=0x%04x\r\n", FW_VERSION,
+                       (unsigned long)(main_uptime_ms() / 1000), (unsigned long)safety_boot_count(),
+                       g_ble_stage, g_ble_err);
     } else if (!strcmp(argv[0], "led") && argc == 2) {
         board_led_set(!strcmp(argv[1], "on"));
         console_printf("ok\r\n");
@@ -189,7 +200,9 @@ static void gus_evt(gus_evt_t *p_evt)
 static void ble_app_init(void)
 {
     gus_init_t gus_init = { .evt_handler = gus_evt };
-    gus_service_init(&gus_init);
+    sdk_err_t e;
+    g_ble_stage = 2;
+    e = gus_service_init(&gus_init);                                   if (e) ble_diag_err(0x100 | (e & 0xFF));
 
     ble_gap_device_name_set(BLE_GAP_WRITE_PERM_DISABLE, (uint8_t *)DEVICE_NAME, strlen(DEVICE_NAME));
     s_adv_param.adv_intv_min = 160;   /* 100 ms */
@@ -198,16 +211,16 @@ static void ble_app_init(void)
     s_adv_param.chnl_map     = BLE_GAP_ADV_CHANNEL_37_38_39;
     s_adv_param.disc_mode    = BLE_GAP_DISC_MODE_GEN_DISCOVERABLE;
     s_adv_param.filter_pol   = BLE_GAP_ADV_ALLOW_SCAN_ANY_CON_ANY;
-    ble_gap_adv_param_set(0, BLE_GAP_OWN_ADDR_STATIC, &s_adv_param);
-    ble_gap_adv_data_set(0, BLE_GAP_ADV_DATA_TYPE_DATA, s_adv_data, sizeof(s_adv_data));
-    ble_gap_adv_data_set(0, BLE_GAP_ADV_DATA_TYPE_SCAN_RSP, s_scan_rsp, sizeof(s_scan_rsp));
+    e = ble_gap_adv_param_set(0, BLE_GAP_OWN_ADDR_STATIC, &s_adv_param);                       if (e) ble_diag_err(0x200 | (e & 0xFF));
+    e = ble_gap_adv_data_set(0, BLE_GAP_ADV_DATA_TYPE_DATA, s_adv_data, sizeof(s_adv_data));     if (e) ble_diag_err(0x300 | (e & 0xFF));
+    e = ble_gap_adv_data_set(0, BLE_GAP_ADV_DATA_TYPE_SCAN_RSP, s_scan_rsp, sizeof(s_scan_rsp)); if (e) ble_diag_err(0x400 | (e & 0xFF));
     ble_gap_l2cap_params_set(247, 247, 1);
     ble_gap_data_length_set(251, 2120);
     ble_gap_pref_phy_set(BLE_GAP_PHY_ANY, BLE_GAP_PHY_ANY);
 
     s_adv_time_param.duration    = 0;
     s_adv_time_param.max_adv_evt = 0;
-    ble_gap_adv_start(0, &s_adv_time_param);
+    e = ble_gap_adv_start(0, &s_adv_time_param);                       if (e) ble_diag_err(0x500 | (e & 0xFF));
 }
 
 void ble_evt_handler(const ble_evt_t *p_evt)
@@ -215,6 +228,10 @@ void ble_evt_handler(const ble_evt_t *p_evt)
     switch (p_evt->evt_id) {
     case BLE_COMMON_EVT_STACK_INIT:
         ble_app_init();
+        break;
+    case BLE_GAPM_EVT_ADV_START:
+        if (p_evt->evt_status) ble_diag_err(0x600 | (p_evt->evt_status & 0xFF));
+        else g_ble_stage = 3;
         break;
     case BLE_GAPC_EVT_CONNECTED:
         safety_ble_connected();

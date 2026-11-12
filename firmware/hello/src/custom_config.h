@@ -240,7 +240,7 @@
 // <0=> Default: Disable internal osc as low power clock
 // <1=> Enable internal osc as low power clock and force CFG_LF_ACCURACY_PPM to 500ppm
 #ifndef CFG_LPCLK_INTERNAL_EN
-#define CFG_LPCLK_INTERNAL_EN   1
+#define CFG_LPCLK_INTERNAL_EN   0   /* quartz 32 kHz externe, comme le firmware Seeed (platform_clock_init(0, RTC_OSC_CLK, 500, 0) à 0x01047C12) */
 #endif
 
 // <o> Delay time for Crystal stabilization time
