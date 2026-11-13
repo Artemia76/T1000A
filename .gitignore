@@ -9,3 +9,6 @@ build/
 # Environnements Python
 .venv/
 __pycache__/
+
+# Firmware Seeed d'origine (propriétaire) : conservé localement, jamais versionné
+tracker-t1000-*.bin
