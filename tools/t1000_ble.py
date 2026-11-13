@@ -45,6 +45,10 @@ def scanner(cb):
     return BleakScanner(cb, bluez={'filters': {'RSSI': -127, 'DuplicateData': True}})
 
 
+class NotFound(Exception):
+    pass
+
+
 DFU_SERVICES = ('a6ed0701' + GOODIX, 'a6ed0401' + GOODIX)   # FastDfu (Seeed), OTA Goodix
 
 
@@ -74,7 +78,7 @@ async def wait_for(name_prefix, timeout, address=None, services=None, exclude=()
         try:
             return await asyncio.wait_for(found, timeout)
         except asyncio.TimeoutError:
-            sys.exit('introuvable (appareil hors de portée, éteint, ou connecté à un téléphone ?)')
+            raise NotFound('introuvable (appareil hors de portée, éteint, ou connecté à un téléphone ?)')
 
 
 import contextlib
@@ -370,7 +374,21 @@ async def cmd_flash(a):
         if attempt > 1:
             print(f'\n--- nouvelle tentative ({attempt}/{a.retries}) ---', flush=True)
             await asyncio.sleep(2.0)
-        c, adv = await connect(a.name, a.t, services=DFU_SERVICES, exclude=[app_addr] if app_addr else ())
+        try:
+            # Le bootloader Seeed repart sur l'application si une connexion échoue : avec --enter-dfu, on
+            # n'attend que 30 s puis on redemande le DFU à l'application.
+            c, adv = await connect(a.name, 30 if a.enter_dfu else a.t, services=DFU_SERVICES,
+                                   exclude=[app_addr] if app_addr else ())
+        except NotFound:
+            if not a.enter_dfu:
+                raise
+            print('bootloader absent (reparti sur l\'application ?) : nouvelle demande de DFU', flush=True)
+            addr = await enter_dfu(a.enter_dfu, a.t)
+            if addr:
+                app_addr = addr
+                await asyncio.sleep(3.0)
+                bluez_forget(addr)
+            continue
         try:
             done = await flash_once(c, a, img, tail, img_info)
         except (DfuError, BleakError, asyncio.TimeoutError, EOFError, OSError) as e:
@@ -587,6 +605,8 @@ def main():
         asyncio.run({'scan': cmd_scan, 'gatt': cmd_gatt, 'flash': cmd_flash, 'at': cmd_at, 'console': cmd_console}[a.cmd](a))
     except DfuError as e:
         sys.exit(f'DFU : {e}')
+    except NotFound as e:
+        sys.exit(str(e))
 
 
 if __name__ == '__main__':
