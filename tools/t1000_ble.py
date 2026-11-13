@@ -37,6 +37,14 @@ SEEED_RX  = '49535343-8841-43f4-a8d4-ecbe34729bb3'   # écriture PC -> appareil
 APP_LOAD_ADDR = 0x0101B000      # seule adresse acceptée pour une application T1000-A
 
 
+def scanner(cb):
+    """Scanner BLE qui voit chaque annonce. Par défaut (bleak : DuplicateData=False), BlueZ ne signale plus un
+    appareil déjà en cache dont l'annonce n'a pas changé, et les contrôleurs à filtre de doublons strict
+    (Intel…) ne le rapportent qu'une fois par session de scan : un bootloader déjà vu restait invisible.
+    Un filtre RSSI fait passer BlueZ en « service discovery », où le noyau relance périodiquement le scan."""
+    return BleakScanner(cb, bluez={'filters': {'RSSI': -127, 'DuplicateData': True}})
+
+
 DFU_SERVICES = ('a6ed0701' + GOODIX, 'a6ed0401' + GOODIX)   # FastDfu (Seeed), OTA Goodix
 
 
@@ -62,7 +70,7 @@ async def wait_for(name_prefix, timeout, address=None, services=None, exclude=()
         if hit and not found.done():
             found.set_result((dev, adv))
 
-    async with BleakScanner(cb):
+    async with scanner(cb):
         try:
             return await asyncio.wait_for(found, timeout)
         except asyncio.TimeoutError:
@@ -108,7 +116,7 @@ async def cmd_scan(a):
     def cb(dev, adv):
         seen[dev.address] = (adv.local_name or dev.name or '?', adv.rssi, adv.service_uuids)
 
-    async with BleakScanner(cb):
+    async with scanner(cb):
         await asyncio.sleep(a.t)
     for addr, (n, rssi, uu) in sorted(seen.items(), key=lambda x: -x[1][1]):
         print(f'{addr}  {rssi:4d} dBm  {n}  {" ".join(uu)}')
@@ -388,7 +396,7 @@ async def wait_back(app_addr, timeout=40):
         if dev.address.upper() == app_addr.upper() and not found.done():
             found.set_result(adv)
 
-    async with BleakScanner(cb):
+    async with scanner(cb):
         try:
             adv = await asyncio.wait_for(found, timeout)
             print(f'application en marche : {adv.local_name}', flush=True)
