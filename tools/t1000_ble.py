@@ -16,6 +16,7 @@ Exemples :
 import re
 import argparse, asyncio, struct, sys, time
 from bleak import BleakClient, BleakScanner
+from bleak.exc import BleakError
 
 GOODIX = '-d344-460a-8075-b9e8ec90d71b'
 GUS_TX   = 'a6ed0202' + GOODIX   # notifications appareil -> PC
@@ -36,18 +37,28 @@ SEEED_RX  = '49535343-8841-43f4-a8d4-ecbe34729bb3'   # écriture PC -> appareil
 APP_LOAD_ADDR = 0x0101B000      # seule adresse acceptée pour une application T1000-A
 
 
-async def wait_for(name_prefix, timeout, address=None):
-    """Attend un appareil dont le nom contient name_prefix, ou d'adresse `address`
-    (le cache BlueZ peut garder l'ancien nom quand le boîtier passe en DFU)."""
-    print(f'attente de « {name_prefix}… »{" ou " + address if address else ""} ({timeout:.0f} s)…', flush=True)
+DFU_SERVICES = ('a6ed0701' + GOODIX, 'a6ed0401' + GOODIX)   # FastDfu (Seeed), OTA Goodix
+
+
+async def wait_for(name_prefix, timeout, address=None, services=None, exclude=()):
+    """Attend un appareil dont le nom contient name_prefix (ou d'adresse name_prefix si c'est une adresse),
+    ou qui annonce l'un des `services`. `exclude` : adresses à ignorer (le cache BlueZ resignale une
+    application qu'on vient de faire redémarrer), sauf si elles annoncent un service DFU."""
+    what = f'« {name_prefix}… »' + (' ou un bootloader DFU' if services else '') + (f' ou {address}' if address else '')
+    print(f'attente de {what} ({timeout:.0f} s)…', flush=True)
     found = asyncio.get_running_loop().create_future()
 
     by_addr = bool(re.fullmatch(r'([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', name_prefix))   # --name AA:BB:… = adresse
+    excl = {e.upper() for e in exclude}
 
     def cb(dev, adv):
+        dfu = bool(services and any(u.lower() in services for u in adv.service_uuids))
+        if dev.address.upper() in excl and not dfu:
+            return             # l'application qu'on vient de redémarrer (même adresse que le bootloader : Seeed)
         n = adv.local_name or dev.name or ''
         hit = (dev.address.upper() == name_prefix.upper()) if by_addr else name_prefix.lower() in n.lower()
-        hit = hit or (address and dev.address.upper() == address.upper())
+        hit = hit or bool(address and dev.address.upper() == address.upper())
+        hit = hit or dfu
         if hit and not found.done():
             found.set_result((dev, adv))
 
@@ -55,7 +66,7 @@ async def wait_for(name_prefix, timeout, address=None):
         try:
             return await asyncio.wait_for(found, timeout)
         except asyncio.TimeoutError:
-            sys.exit('introuvable')
+            sys.exit('introuvable (appareil hors de portée, éteint, ou connecté à un téléphone ?)')
 
 
 import contextlib
@@ -71,12 +82,12 @@ async def disconnecting(c):
             await c.disconnect()
 
 
-async def connect(name, timeout, address=None):
+async def connect(name, timeout, address=None, services=None, exclude=()):
     """Attend l'appareil puis s'y connecte, en réessayant tant que le délai n'est pas écoulé :
     BlueZ échoue souvent au premier essai (br-connection-canceled) sur une fenêtre d'annonce courte."""
     deadline = time.time() + timeout
     while True:
-        dev, adv = await wait_for(name, max(1.0, deadline - time.time()), address)
+        dev, adv = await wait_for(name, max(1.0, deadline - time.time()), address, services, exclude)
         print(f'trouvé : {adv.local_name} {dev.address} rssi={adv.rssi} services_pub={adv.service_uuids}',
               flush=True)
         c = BleakClient(dev, timeout=10)
@@ -333,19 +344,67 @@ async def cmd_flash(a):
     img_info = tail[:40]          # dfu_image_info_t : pattern, version, boot_info (24), comments (12)
     print(f'image : {len(img)} octets, commentaire « {tail[28:40].split(bytes(1))[0].decode()} »')
 
-    address = None
+    app_addr = None
     if a.enter_dfu:
-        address = await enter_dfu(a.enter_dfu, a.t)
+        app_addr = await enter_dfu(a.enter_dfu, a.t)
         print('le boîtier redémarre en bootloader DFU…')
-        await asyncio.sleep(3.0)          # laisser le firmware Seeed redémarrer (≈1,2 s)
-        bluez_forget(address)
-    c, adv = await connect(a.name, a.t, address)
+        await asyncio.sleep(3.0)          # laisser le firmware redémarrer (≈1,2 s)
+        bluez_forget(app_addr)
+
+    # Le bootloader n'a pas forcément l'adresse de l'application (T1000-A : …DC:F8 contre …7A:8F) : on le
+    # reconnaît à son nom ou à son service DFU annoncé, et on ignore l'adresse de l'application, que le cache
+    # BlueZ resignale encore quelques secondes. Une coupure pendant le flash relance une tentative complète :
+    # le bootloader reste en attente tant qu'aucun WRITE_BOOT valide n'a été reçu.
+    for attempt in range(1, a.retries + 1):
+        if attempt > 1:
+            print(f'\n--- nouvelle tentative ({attempt}/{a.retries}) ---', flush=True)
+            await asyncio.sleep(2.0)
+        c, adv = await connect(a.name, a.t, services=DFU_SERVICES, exclude=[app_addr] if app_addr else ())
+        try:
+            done = await flash_once(c, a, img, tail, img_info)
+        except (DfuError, BleakError, asyncio.TimeoutError, EOFError, OSError) as e:
+            print(f'\néchec : {e}', flush=True)
+            continue
+        if done is False:          # pas un bootloader : on cherche encore
+            continue
+        if done is not None and app_addr and not a.dry_run:
+            await wait_back(app_addr)
+        return
+    sys.exit(f'échec après {a.retries} tentatives. Le bootloader attend encore : relancer\n'
+             f'  t1000_ble.py flash {a.file}\n'
+             'ou, s\'il a disparu : maintenir le bouton en rebranchant le câble (voir docs/materiel-t1000a.md).')
+
+
+async def wait_back(app_addr, timeout=40):
+    """Après WRITE_BOOT : attend que l'application réapparaisse à son adresse."""
+    print(f'attente du redémarrage de l\'application ({app_addr})…', flush=True)
+    bluez_forget(app_addr)
+    found = asyncio.get_running_loop().create_future()
+
+    def cb(dev, adv):
+        if dev.address.upper() == app_addr.upper() and not found.done():
+            found.set_result(adv)
+
+    async with BleakScanner(cb):
+        try:
+            adv = await asyncio.wait_for(found, timeout)
+            print(f'application en marche : {adv.local_name}', flush=True)
+        except asyncio.TimeoutError:
+            print('application pas revue en 40 s (connectée à un téléphone ? sinon vérifier le boîtier)', flush=True)
+
+
+async def flash_once(c, a, img, tail, img_info):
+    """Une tentative complète sur un client connecté. Retourne False si l'appareil n'est pas un bootloader."""
     async with disconnecting(c):
         with contextlib.suppress(Exception):
             await c._backend._acquire_mtu()            # BlueZ : MTU réellement négocié
         print(f'MTU={c.mtu_size}')
         if c.services.get_characteristic(SEEED_OTA_A) is not None:
-            return await fast_flash(c, a, img, tail)
+            await fast_flash(c, a, img, tail)
+            return True
+        if c.services.get_characteristic(OTA_RX) is None and c.services.get_characteristic(OTA_CTRL) is None:
+            print('pas de service DFU sur cet appareil : ce n\'est pas le bootloader, on continue de chercher')
+            return False
         d = GoodixDfu(c)
         await d.start()
         info = await d.probe()
@@ -371,7 +430,7 @@ async def cmd_flash(a):
                 sys.exit('l\'appareil n\'est pas en mode bootloader DFU : abandon')
             if a.dry_run:
                 print('--dry-run : arrêt avant toute commande modifiante (le bootloader repart seul après 3 min)')
-                return
+                return True
             await d.send(d.DFU_MODE_SET, b'\x02')          # non-copy (simple banque), pas de réponse
             await asyncio.sleep(0.2)
         if boot_load + boot_bin + 48 >= save_addr:
@@ -395,6 +454,8 @@ async def cmd_flash(a):
         print(f'\nécrit en {time.time() - t0:.1f} s')
         await d.request(d.PROGRAM_END, b'\x01' + struct.pack('<I', sum(img) & 0xFFFFFFFF), timeout=10)
         print('PROGRAM_END accepté : l\'appareil redémarre sur le nouveau firmware')
+        return True
+
 
 
 # ---------------------------------------------------------------- AT (firmware Seeed)
@@ -467,7 +528,32 @@ async def cmd_console(a):
             await asyncio.sleep(0.3)
 
 
+class _SafeOut:
+    """stdout qui ignore une sortie fermée (ex. « | head ») : le flash continue en silence."""
+    def __init__(self, f):
+        self.f, self.dead = f, False
+
+    def write(self, t):
+        if not self.dead:
+            try:
+                return self.f.write(t)
+            except (BrokenPipeError, OSError):
+                self.dead = True
+        return len(t)
+
+    def flush(self):
+        if not self.dead:
+            try:
+                self.f.flush()
+            except (BrokenPipeError, OSError):
+                self.dead = True
+
+    def __getattr__(self, n):
+        return getattr(self.f, n)
+
+
 def main():
+    sys.stdout = _SafeOut(sys.stdout)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('scan'); p.add_argument('-t', type=float, default=10)
@@ -475,6 +561,7 @@ def main():
     p = sub.add_parser('flash'); p.add_argument('file'); p.add_argument('--name', default='SENSECAP_GR_DFU')
     p.add_argument('-t', type=float, default=180)
     p.add_argument('--dry-run', action='store_true', help='interroge le bootloader sans rien écrire')
+    p.add_argument('--retries', type=int, default=3, help='tentatives en cas de coupure BLE (défaut 3)')
     p.add_argument('--enter-dfu', metavar='NOM', help='passer d\'abord l\'appareil NOM en DFU (AT+DFU_ENTER pour Seeed, « dfu » pour nos firmwares)')
     p = sub.add_parser('at'); p.add_argument('cmds', nargs='+'); p.add_argument('--name', default='T1000')
     p.add_argument('-t', type=float, default=180)
