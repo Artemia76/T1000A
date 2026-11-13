@@ -347,9 +347,12 @@ async def cmd_flash(a):
     app_addr = None
     if a.enter_dfu:
         app_addr = await enter_dfu(a.enter_dfu, a.t)
-        print('le boîtier redémarre en bootloader DFU…')
-        await asyncio.sleep(3.0)          # laisser le firmware redémarrer (≈1,2 s)
-        bluez_forget(app_addr)
+        if app_addr:
+            print('le boîtier redémarre en bootloader DFU…')
+            await asyncio.sleep(3.0)          # laisser le firmware redémarrer (≈1,2 s)
+            bluez_forget(app_addr)
+        else:
+            await asyncio.sleep(1.0)
 
     # Le bootloader n'a pas forcément l'adresse de l'application (T1000-A : …DC:F8 contre …7A:8F) : on le
     # reconnaît à son nom ou à son service DFU annoncé, et on ignore l'adresse de l'application, que le cache
@@ -487,10 +490,15 @@ async def at_session(name, cmds, timeout):
 
 async def enter_dfu(name, timeout):
     """Fait passer l'appareil en bootloader DFU, quel que soit le firmware en place :
-    firmware Seeed (UART transparent ISSC) -> AT+DFU_ENTER ; nos firmwares (console GUS) -> 'dfu'."""
-    c, adv = await connect(name, timeout)
+    firmware Seeed (UART transparent ISSC) -> AT+DFU_ENTER ; nos firmwares (console GUS) -> 'dfu'.
+    Si un bootloader DFU est déjà visible (flash précédent interrompu), retourne None : rien à faire."""
+    c, adv = await connect(name, timeout, services=DFU_SERVICES)
     address = c.address
     try:
+        if (c.services.get_characteristic(SEEED_OTA_A) is not None
+                or c.services.get_characteristic(OTA_CTRL) is not None):
+            print('déjà en bootloader DFU', flush=True)
+            return None
         if c.services.get_characteristic(SEEED_RX) is not None:
             print('firmware Seeed : AT+DFU_ENTER', flush=True)
             await c.start_notify(SEEED_TX, lambda _h, d: print(d.decode(errors='replace'), end='', flush=True))
