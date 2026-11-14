@@ -19,3 +19,6 @@
 	url = https://github.com/goodix-ble/GoodixBleDFU.Android.git
 	shallow = true
 	update = none
+[submodule "twin"]
+	path = emulator/twin
+	url = https://github.com/Artemia76/t1000a-twin.git

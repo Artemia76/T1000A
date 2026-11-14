@@ -1,51 +1,39 @@
 #!/usr/bin/env bash
 # Prépare un clone neuf du dépôt T1000A pour construire et tester les firmwares :
-#   1. sous-module platform-gr551x ;
-#   2. dépendances non versionnées dans third_party/, aux révisions utilisées par le projet ;
+#   1. sous-modules (plateforme, fork MeshCore, jumeau numérique, SDK Goodix, RadioLib) aux révisions figées ;
+#   2. push en ssh vers les dépôts Artemia76 (les URL de .gitmodules sont en https pour le clone anonyme) ;
 #   3. environnement Python (jumeau numérique, PlatformIO, outil BLE).
-# Idempotent : ce qui existe déjà n'est pas retouché.
+# Idempotent.
 #
 #   tools/setup.sh                 → venv dans .venv/
 #   VENV=/chemin tools/setup.sh    → venv ailleurs
+# Dépôt de référence du protocole DFU (non initialisé par défaut) :
+#   git submodule update --init --checkout third_party/goodix-dfu-android
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 VENV=${VENV:-$ROOT/.venv}
-TP=$ROOT/third_party
-
-# Révisions figées (même SDK que platform-gr551x/platform.json)
-SDK_URL=https://github.com/Artemia76/GR551x.SDK.git;   SDK_REV=b1bb11f5cc65fc0504a273141eb8231b6e75b2b0
-RL_URL=https://github.com/jgromes/RadioLib.git;        RL_REV=6d8934836678d8894e3d556550475b37dce3e2b6
-MC_URL=https://github.com/Artemia76/MeshCore.git;      MC_BRANCH=feature/t1000a-gr5515
-MC_UPSTREAM=https://github.com/meshcore-dev/MeshCore.git
 
 say() { printf '\n== %s\n' "$*"; }
 
-say "sous-module platform-gr551x"
-git -C "$ROOT" submodule update --init platform-gr551x
+say "sous-modules"
+git -C "$ROOT" submodule update --init --recursive
+git -C "$ROOT" submodule status
 
-clone_rev() {   # url révision dossier
-  if [ -d "$3/.git" ]; then echo "$3 : déjà présent ($(git -C "$3" rev-parse --short HEAD))"; return; fi
-  git clone -q "$1" "$3"
-  git -C "$3" -c advice.detachedHead=false checkout -q "$2"
-  echo "$3 : $(git -C "$3" rev-parse --short HEAD)"
-}
-
-say "dépendances third_party/"
-mkdir -p "$TP"
-clone_rev "$SDK_URL" "$SDK_REV" "$TP/gr551x-sdk"          # SDK Goodix (firmware hello, Makefile)
-clone_rev "$RL_URL" "$RL_REV" "$TP/radiolib"              # RadioLib (firmware hello)
-if [ -d "$TP/meshcore/.git" ]; then
-  echo "$TP/meshcore : déjà présent ($(git -C "$TP/meshcore" branch --show-current))"
-else
-  git clone -q -b "$MC_BRANCH" "$MC_URL" "$TP/meshcore"   # portage MeshCore (variante t1000-a)
-  git -C "$TP/meshcore" remote add upstream "$MC_UPSTREAM"
-  echo "$TP/meshcore : $MC_BRANCH ($(git -C "$TP/meshcore" rev-parse --short HEAD))"
-fi
+say "push en ssh vers les dépôts Artemia76"
+git -C "$ROOT" submodule foreach --quiet '
+  url=$(git config remote.origin.url)
+  case "$url" in https://github.com/Artemia76/*)
+    git config remote.origin.pushurl "git@github.com:${url#https://github.com/}"
+    echo "$sm_path → $(git config remote.origin.pushurl)";;
+  esac'
+# Le fork MeshCore se rebase sur le dépôt officiel (tools/sync-upstream.sh)
+git -C "$ROOT/firmware/meshcore" remote get-url upstream >/dev/null 2>&1 \
+  || git -C "$ROOT/firmware/meshcore" remote add upstream https://github.com/meshcore-dev/MeshCore.git
 
 say "environnement Python ($VENV)"
 [ -x "$VENV/bin/python" ] || python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q -r "$ROOT/tools/sim/requirements.txt" platformio bleak meshcore-cli
+"$VENV/bin/pip" install -q -r "$ROOT/emulator/twin/requirements.txt" platformio bleak meshcore-cli
 "$VENV/bin/python" -c 'import unicorn, elftools, pytest, bleak; print("modules Python : OK")'
 
 command -v arm-none-eabi-gcc >/dev/null || echo "ATTENTION : arm-none-eabi-gcc absent (nécessaire pour firmware/hello ; PlatformIO a le sien)"
@@ -53,9 +41,10 @@ command -v arm-none-eabi-gcc >/dev/null || echo "ATTENTION : arm-none-eabi-gcc a
 cat <<EOF
 
 Prêt. Ensuite :
-  (cd third_party/meshcore && $VENV/bin/pio run -e t1000a_companion_radio_ble)   # firmware MeshCore
-  (cd platform-gr551x/examples/blink && $VENV/bin/pio run)                      # exemple blink
-  make -C firmware/hello                                                         # firmware de test hello
-  (cd tools/sim && $VENV/bin/python -m pytest -q tests)                          # jumeau numérique
-  T1000_TWIN_PYTHON=$VENV/bin/python … pio run -t upload                         # flash validé par le jumeau
+  (cd firmware/meshcore && $VENV/bin/pio run -e t1000a_companion_radio_ble)    # firmware MeshCore
+  (cd platform/gr551x/examples/blink && $VENV/bin/pio run)                     # exemple blink
+  make -C firmware/hello                                                        # firmware de test hello
+  (cd emulator/twin && $VENV/bin/python -m pytest -q tests)                     # jumeau numérique
+  tools/sync-upstream.sh [--local]                                              # rebase du fork MeshCore
+  T1000_TWIN_PYTHON=$VENV/bin/python … pio run -t upload                        # flash validé par le jumeau
 EOF
