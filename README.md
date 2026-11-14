@@ -67,3 +67,13 @@ git submodule update --remote firmware/meshcore    # suivre la branche déclaré
 Le workflow Amont pousse le résultat du rebase sur une branche `auto/rebase-AAAAMMJJ` du fork si le secret
 `MESHCORE_FORK_TOKEN` (jeton à droit d'écriture sur Artemia76/MeshCore) est défini ; il ne touche jamais à
 `feature/t1000a-gr5515`.
+
+## Licence
+
+- Code et documentation de ce dépôt : [MIT](LICENSE), © 2026 Artemia76. Les sous-modules gardent leur propre
+  licence : MeshCore et RadioLib MIT, sources du SDK Goodix BSD-3-Clause, plateforme MIT (dont la copie
+  d'ArduinoCore-API qu'elle embarque : LGPL-2.1).
+- Photo `docs/images/t1000-a.jpg` : © 2026 Artemia76, sous licence
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.fr) (réutilisation libre en citant l'auteur).
+
+Projet indépendant, sans lien avec Seeed Studio ni Goodix. SenseCAP est une marque de Seeed Technology.
