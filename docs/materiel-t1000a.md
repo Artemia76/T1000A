@@ -102,7 +102,8 @@ La séquence d'initialisation est exactement celle du T1000-E (EN, VRTC_EN, RESE
 | I²C (capteurs, accéléromètre) | SCL=GPIO8, SDA=GPIO9 | probable |
 | Alimentation accéléromètre | GPIO7 | probable |
 | IRQ accéléromètre | AON2 (`0x22`) | probable |
-| État de charge | AON4, AON5, MSIO0 | probable |
+| Présence du câble de charge | MSIO0 (ADC) : ≈ 2490 mV câble branché, ≈ 35 mV débranché | **vérifié** (2026-11-14, console `chg`) |
+| État de charge | AON4 (pull-up) : 0 pendant la charge, 1 sinon (sortie du chargeur active à l'état bas, probablement « en charge ») ; AON5 resté à 1 câble branché ou non (fin de charge ? à vérifier batterie pleine) | AON4 vérifié (branché/débranché), rôle exact et AON5 à confirmer |
 | Détection du câble console | GPIO11 (`0x0b` = UART0 RX) lu en entrée pull-up au démarrage, juste avant l'init de l'UART0 (même fonction que les chaînes « Tracker T1000-A/B [Test] ») | probable |
 | ADC (batterie / capteurs) | **Batterie : MSIO4**, pont diviseur ÷2, activé par GPIO14 (fonction `0x01028DDC` → `0x01034914`). Voies logiques Seeed 0…4 = MSIO0…4 (n° 3 : lumière, LED AON3 éteinte pendant la mesure). Réglages : single-ended, réf. interne 1,28 V, 1 MHz, 20 échantillons, `app_adc_voltage_intern`. | **vérifié** (4198 mV mesurés, batterie pleine) |
 
