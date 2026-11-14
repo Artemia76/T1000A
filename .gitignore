@@ -1,5 +1,3 @@
-# Sources tierces clonées (SDK Goodix, MeshCore)
-third_party/
 # Artefacts de build
 build/
 *.o

@@ -1,3 +1,11 @@
 [submodule "platform-gr551x"]
 	path = platform/gr551x
 	url = https://github.com/Artemia76/platform-gr551x.git
+[submodule "meshcore"]
+	path = firmware/meshcore
+	url = https://github.com/Artemia76/MeshCore.git
+	branch = feature/t1000a-gr5515
+[submodule "gr551x-sdk"]
+	path = third_party/gr551x-sdk
+	url = https://github.com/Artemia76/GR551x.SDK.git
+	branch = platformio
