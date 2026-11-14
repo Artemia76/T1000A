@@ -44,7 +44,7 @@ SRC_C := \
 
 SRC_S := $(SDK)/platform/arch/arm/cortex-m/gcc/startup_gr55xx.s
 
-INC := src $(RADIOLIB) $(ROOT)/platform-gr551x/variants/t1000-a \
+INC := src $(RADIOLIB) $(ROOT)/platform/gr551x/variants/t1000-a \
   $(SDK)/components/libraries/app_assert $(SDK)/components/libraries/app_error \
   $(SDK)/components/libraries/app_log $(SDK)/components/libraries/app_timer \
   $(SDK)/components/libraries/hal_flash $(SDK)/components/libraries/pmu_calibration \

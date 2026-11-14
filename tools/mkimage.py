@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Redirection vers platform-gr551x/tools/mkimage.py (sous-module, seule source de l'outil).
+"""Redirection vers platform/gr551x/tools/mkimage.py (sous-module, seule source de l'outil).
 
 Conservé pour les commandes et la documentation existantes, et pour l'import `from mkimage import …`.
 """
 import importlib.util, os, sys
 
-_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'platform-gr551x', 'tools', 'mkimage.py')
+_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'platform', 'gr551x', 'tools', 'mkimage.py')
 if not os.path.exists(_PATH):
-    sys.exit('platform-gr551x absent : git submodule update --init')
+    sys.exit('platform/gr551x absent : git submodule update --init')
 _spec = importlib.util.spec_from_file_location('_platform_mkimage', _PATH)
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
