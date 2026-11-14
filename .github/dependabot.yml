@@ -1,0 +1,19 @@
+# Une PR par sous-module qui a avancé (branche déclarée dans .gitmodules, sinon branche par défaut) ;
+# la CI (constructions + jumeau numérique) sert de garde-fou.
+version: 2
+updates:
+  - package-ecosystem: gitsubmodule
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      # Référence seulement (update = none), et le SDK se met à jour avec platform.json (workflow Amont)
+      - dependency-name: third_party/goodix-dfu-android
+      - dependency-name: third_party/gr551x-sdk
+  - package-ecosystem: github-actions
+    directories: [/, /.github/actions/setup]
+    target-branch: main
+    schedule:
+      interval: monthly

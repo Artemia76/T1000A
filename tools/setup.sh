@@ -20,6 +20,7 @@ git -C "$ROOT" submodule update --init --recursive
 git -C "$ROOT" submodule status
 
 say "push en ssh vers les dépôts Artemia76"
+# shellcheck disable=SC2016  # évalué par submodule foreach, dans chaque sous-module
 git -C "$ROOT" submodule foreach --quiet '
   url=$(git config remote.origin.url)
   case "$url" in https://github.com/Artemia76/*)

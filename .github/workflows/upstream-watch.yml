@@ -1,0 +1,124 @@
+# Chaque semaine, surveille les dépôts amont des forks et signale dans une issue ce qui demande une action :
+#  - meshcore : si meshcore-dev/MeshCore (dev) a avancé, rebase le fork (tools/sync-upstream.sh --local),
+#    compile et fait passer le jumeau. Avec le secret MESHCORE_FORK_TOKEN (jeton à droit d'écriture sur
+#    Artemia76/MeshCore), pousse le résultat sur une branche auto/rebase-AAAAMMJJ du fork ; jamais sur la
+#    branche de travail.
+#  - sdk : nouveaux commits de goodix-ble/GR551x.SDK que le fork (révision figée dans T1000A) n'a pas.
+name: Amont
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  BRANCH: feature/t1000a-gr5515
+  ELF: firmware/meshcore/.pio/build/t1000a_companion_radio_ble/firmware.elf
+
+jobs:
+  meshcore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FORK_TOKEN: ${{ secrets.MESHCORE_FORK_TOKEN }}
+    steps:
+      - name: Retard du fork sur upstream/dev
+        id: behind
+        run: |
+          n=$(gh api "repos/Artemia76/MeshCore/compare/meshcore-dev:dev...$BRANCH" --jq .behind_by)
+          echo "upstream/dev : $n commit(s) absents de $BRANCH"
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+      - if: steps.behind.outputs.n != '0'
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - if: steps.behind.outputs.n != '0'
+        uses: ./.github/actions/setup
+      - name: Rebase et compilation
+        id: rebase
+        if: steps.behind.outputs.n != '0'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cd firmware/meshcore
+          git fetch -q --unshallow origin || git fetch -q origin
+          git fetch -q origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          git switch -C "$BRANCH" "origin/$BRANCH"
+          cd ../..
+          PIO=pio tools/sync-upstream.sh --local
+      - name: Jumeau numérique
+        id: twin
+        if: steps.rebase.outcome == 'success'
+        working-directory: emulator/twin
+        run: python -m pytest -q -p no:cacheprovider tests --firmware "$GITHUB_WORKSPACE/$ELF"
+      - name: Branche auto/rebase sur le fork
+        id: push
+        if: steps.twin.outcome == 'success' && env.FORK_TOKEN != ''
+        run: |
+          b="auto/rebase-$(date +%Y%m%d)"
+          git -C firmware/meshcore push -f "https://x-access-token:$FORK_TOKEN@github.com/Artemia76/MeshCore.git" "HEAD:refs/heads/$b"
+          echo "branch=$b" >> "$GITHUB_OUTPUT"
+      - name: Issue
+        if: always() && steps.behind.outputs.n != '0'
+        env:
+          N: ${{ steps.behind.outputs.n }}
+          REBASE: ${{ steps.rebase.outcome }}
+          TWIN: ${{ steps.twin.outcome }}
+          PUSHED: ${{ steps.push.outputs.branch }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          f=$(mktemp)
+          {
+            echo "meshcore-dev/MeshCore \`dev\` a **$N** commit(s) absents de \`$BRANCH\` ([exécution]($RUN))."
+            echo
+            if [ "$REBASE" != success ]; then
+              echo "❌ Le rebase ou la compilation échoue : conflit à résoudre à la main (\`tools/sync-upstream.sh\`)."
+            elif [ "$TWIN" != success ]; then
+              echo "❌ Le rebase et la compilation passent, mais le firmware **échoue au jumeau numérique**."
+            else
+              echo "✅ Le rebase passe proprement, le firmware compile et passe le jumeau numérique."
+              echo
+              if [ -n "$PUSHED" ]; then
+                echo "Résultat poussé sur \`$PUSHED\` du fork. Pour l'adopter après relecture :"
+                echo '```'
+                echo "cd firmware/meshcore && git fetch origin $PUSHED"
+                echo "git switch $BRANCH && git reset --hard origin/$PUSHED"
+                echo "git push --force-with-lease origin $BRANCH"
+                echo "cd ../.. && git add firmware/meshcore && git commit -m 'MeshCore : rebase sur upstream/dev'"
+                echo '```'
+              else
+                echo "Pour l'adopter : \`tools/sync-upstream.sh --local\` en local, puis pousser le fork et commiter le pointeur \`firmware/meshcore\`."
+              fi
+            fi
+          } > "$f"
+          tools/ci-issue.sh "Amont : MeshCore dev" "$f"
+
+  sdk:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nouveaux commits Goodix
+        run: |
+          pin=$(git ls-tree HEAD third_party/gr551x-sdk | awk '{print $3}')
+          n=$(gh api "repos/Artemia76/GR551x.SDK/compare/goodix-ble:master...$pin" --jq .behind_by)
+          echo "goodix-ble/GR551x.SDK master : $n commit(s) absents du SDK figé (${pin:0:7})"
+          [ "$n" != 0 ] || exit 0
+          f=$(mktemp)
+          {
+            echo "goodix-ble/GR551x.SDK \`master\` a **$n** commit(s) absents du SDK figé (\`${pin:0:7}\`) :"
+            echo
+            gh api "repos/goodix-ble/GR551x.SDK/commits?sha=master&per_page=$((n < 30 ? n : 30))" \
+              --jq '.[] | "- " + .sha[0:7] + " " + (.commit.message | split("\n")[0])'
+            echo
+            echo "Pour intégrer : rebaser la branche \`platformio\` du fork sur \`master\`, figer le nouveau commit dans"
+            echo "\`platform/gr551x/platform.json\` **et** dans \`third_party/gr551x-sdk\` (vérifié par \`tools/ci-build.sh\`),"
+            echo "puis repasser le jumeau : les symboles ROM peuvent changer."
+          } > "$f"
+          tools/ci-issue.sh "Amont : SDK Goodix" "$f"

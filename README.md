@@ -36,7 +36,7 @@ Puis :
 | `third_party/gr551x-sdk/` | sous-module, [fork du SDK Goodix](https://github.com/Artemia76/GR551x.SDK) (`platformio`) | SDK du GR551x (hello, symboles ROM du jumeau) |
 | `third_party/radiolib/` | sous-module, [RadioLib](https://github.com/jgromes/RadioLib) | Pilote LR1110 (hello) |
 | `third_party/goodix-dfu-android/` | sous-module non initialisé par défaut | Référence du protocole DFU Goodix |
-| `tools/` | versionné ici | `setup.sh`, `sync-upstream.sh`, `meshcore_ble.py` ; `t1000_ble.py` et `mkimage.py` sont des liens symboliques vers `platform/gr551x/tools/` |
+| `tools/` | versionné ici | `setup.sh`, `sync-upstream.sh`, `ci-build.sh`, `ci-issue.sh`, `meshcore_ble.py` ; `t1000_ble.py` et `mkimage.py` sont des liens symboliques vers `platform/gr551x/tools/` |
 | `docs/` | versionné ici | Matériel du T1000-A relevé par rétro-ingénierie |
 
 Règle de rangement : `firmware/`, `platform/` et `emulator/` contiennent nos composants, `third_party/` le code des
@@ -52,3 +52,16 @@ cd platform/gr551x && git switch main && …        # modifier, commiter, git pu
 cd ../.. && git add platform/gr551x && git commit -m "platform : …"
 git submodule update --remote firmware/meshcore    # suivre la branche déclarée dans .gitmodules
 ```
+
+## Maintenance automatique
+
+| Mécanisme | Où | Ce qu'il fait |
+|---|---|---|
+| CI (`.github/workflows/ci.yml`) | push sur `main`, PR | `tools/ci-build.sh` : cohérence SDK sous-module / `platform.json`, MeshCore avec la plateforme du sous-module, blink, hello, jumeau numérique. Rejouable en local |
+| Dependabot (`.github/dependabot.yml`) | chaque lundi | Une PR par sous-module qui a avancé (MeshCore, plateforme, jumeau, RadioLib), validée par la CI ; actions GitHub chaque mois |
+| Amont (`.github/workflows/upstream-watch.yml`) | chaque lundi | MeshCore `dev` a avancé : rebase du fork, compilation, jumeau, puis issue « Amont : MeshCore dev » avec le résultat. Nouveaux commits Goodix : issue « Amont : SDK Goodix » |
+| ArduinoCore-API (workflow de la plateforme) | chaque mois | Copie de `cores/gr551x/api` refaite avec nos patchs, blink compilé, PR dans platform-gr551x |
+
+Le workflow Amont pousse le résultat du rebase sur une branche `auto/rebase-AAAAMMJJ` du fork si le secret
+`MESHCORE_FORK_TOKEN` (jeton à droit d'écriture sur Artemia76/MeshCore) est défini ; il ne touche jamais à
+`feature/t1000a-gr5515`.

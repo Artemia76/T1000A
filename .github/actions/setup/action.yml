@@ -1,0 +1,15 @@
+name: Environnement T1000A
+description: Python, PlatformIO (paquets en cache) et dépendances du jumeau numérique
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - uses: actions/cache@v4
+      with:
+        path: ~/.platformio
+        key: pio-${{ hashFiles('platform/gr551x/platform.json', 'firmware/meshcore/variants/t1000-a/platformio.ini') }}
+        restore-keys: pio-
+    - shell: bash
+      run: pip install -r emulator/twin/requirements.txt platformio

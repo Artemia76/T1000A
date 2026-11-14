@@ -1,0 +1,35 @@
+# Intégration : construit MeshCore (avec la plateforme du sous-module), blink et hello, puis les fait passer au
+# jumeau numérique (tools/ci-build.sh). Garde-fou des PR Dependabot qui avancent un sous-module.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup
+      - name: Constructions et jumeau numérique
+        run: tools/ci-build.sh
+        env:
+          PIO: pio
+          PYTHON: python
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: firmwares-dfu
+          path: |
+            firmware/meshcore/.pio/build/t1000a_companion_radio_ble/firmware_dfu.bin
+            firmware/meshcore/.pio/build/t1000a_companion_radio_ble/firmware.elf
+            firmware/hello/build/t1000a_hello_dfu.bin
