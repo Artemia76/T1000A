@@ -37,6 +37,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          # Sinon git envoie le jeton du workflow (en-tête http.extraheader) au lieu de MESHCORE_FORK_TOKEN
+          persist-credentials: false
       - if: steps.behind.outputs.n != '0'
         uses: ./.github/actions/setup
       - name: Rebase et compilation
