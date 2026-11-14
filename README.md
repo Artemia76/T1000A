@@ -36,7 +36,7 @@ Puis :
 | `third_party/gr551x-sdk/` | sous-module, [fork du SDK Goodix](https://github.com/Artemia76/GR551x.SDK) (`platformio`) | SDK du GR551x (hello, symboles ROM du jumeau) |
 | `third_party/radiolib/` | sous-module, [RadioLib](https://github.com/jgromes/RadioLib) | Pilote LR1110 (hello) |
 | `third_party/goodix-dfu-android/` | sous-module non initialisé par défaut | Référence du protocole DFU Goodix |
-| `tools/` | versionné ici | `setup.sh`, `sync-upstream.sh`, `meshcore_ble.py` ; `t1000_ble.py` et `mkimage.py` redirigent vers `platform/gr551x/tools/` |
+| `tools/` | versionné ici | `setup.sh`, `sync-upstream.sh`, `meshcore_ble.py` ; `t1000_ble.py` et `mkimage.py` sont des liens symboliques vers `platform/gr551x/tools/` |
 | `docs/` | versionné ici | Matériel du T1000-A relevé par rétro-ingénierie |
 
 Règle de rangement : `firmware/`, `platform/` et `emulator/` contiennent nos composants, `third_party/` le code des
