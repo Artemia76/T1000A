@@ -96,7 +96,7 @@ La séquence d'initialisation est exactement celle du T1000-E (EN, VRTC_EN, RESE
 |---|---|---|
 | Console / AT (câble magnétique) | UART0 TX=GPIO10, RX=GPIO11 (mux 2), 2 000 000 bauds dans la config par défaut | sûr (pins) / à vérifier (débit) |
 | Bouton | AON0 (`0x20`), entrée, interruption | probable |
-| LED | AON3 (`0x23`), aussi PWM1 (mux 5) à 100 Hz | probable |
+| LED | AON3 (`0x23`), aussi PWM1 (mux 5) à 100 Hz. **Seule LED** : l'inventaire de tous les appels GPIO du firmware Seeed (config `0x01035E80`, écriture `0x01035F28`) ne pilote aucune autre broche de LED. Tâche `APP_LED_TASK` à `0x01029620` (mode courant à `0x00804BB0`, posé par `0x01046A98(mode)`) ; `APP_CHARGE_TASK` (`0x01029200`…, lit AON4/AON5/MSIO0) lui envoie les modes 7 et 8 (indication de charge, motifs à décoder) | probable (broche), vérifié (unicité) |
 | Buzzer | PWM0 sur GPIO2 (mux 5), 1 kHz ; activation GPIO15 (`0x0f`) | probable |
 | Alimentation capteurs / mesure | GPIO14 (`0x0e`), mis à 1 au démarrage, basculé autour des mesures | probable |
 | I²C (capteurs, accéléromètre) | SCL=GPIO8, SDA=GPIO9 | probable |
