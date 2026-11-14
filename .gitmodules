@@ -9,3 +9,13 @@
 	path = third_party/gr551x-sdk
 	url = https://github.com/Artemia76/GR551x.SDK.git
 	branch = platformio
+	shallow = true
+[submodule "radiolib"]
+	path = third_party/radiolib
+	url = https://github.com/jgromes/RadioLib.git
+	shallow = true
+[submodule "goodix-dfu-android"]
+	path = third_party/goodix-dfu-android
+	url = https://github.com/goodix-ble/GoodixBleDFU.Android.git
+	shallow = true
+	update = none
