@@ -1,5 +1,7 @@
 # T1000A — MeshCore sur le SenseCAP T1000-A (Goodix GR5515)
 
+<p align="center"><img src="docs/images/t1000-a.jpg" alt="SenseCAP T1000-A de Seeed" width="240"></p>
+
 Portage de MeshCore sur le SenseCAP T1000-A de Seeed (GR5515 + LR1110 + AG3335). Le boîtier n'a ni USB ni
 SWD : on le flashe en BLE par le bootloader Seeed, et chaque firmware passe d'abord par un jumeau numérique
 du boîtier.
