@@ -115,6 +115,20 @@ Si l'application ne répond plus (aucun BLE, bouton sans effet, boucle de redém
 2. débrancher le cordon magnétique, **maintenir le bouton**, rebrancher le cordon en gardant l'appui quelques secondes ;
 3. le bootloader s'annonce en `SENSECAP_GR_DFU_xxxx` (fenêtre ≈ 3 min) et l'outil flashe l'image.
 
+## Arrêt véritable : veille ultra-profonde du GR5515 (essais du 2026-11-15)
+
+`pwr_mgmt_ultra_sleep(0)` du SDK, réveil par `hal_pwr_config_ext_wakeup`, sans RAM conservée :
+- **broches AON** : elles réveillent bien, AON0 (bouton) au niveau haut et AON4 (état du chargeur) au niveau bas,
+  ensemble. Pas de réveil parasite constaté (compteur de réveils exact) ;
+- **comparateur MSIO** (`app_comp`, MSIO0 = câble, seuil ≈ 1 V) : **ne réveille pas** depuis ce mode ;
+- **calendrier AON** : il repart de zéro au réveil, donc on ne peut pas mesurer la durée d'arrêt ;
+- **chaque réveil** passe par le bootloader Seeed, qui fait **clignoter la LED 2 fois**, puis par un démarrage
+  complet de l'application. Un appui d'environ 3 s suffit pour que le bouton soit encore enfoncé quand
+  l'application démarre ;
+- **récupération** : depuis cet état, la procédure « bouton + cordon » ci-dessus réveille l'application (le
+  bouton est une source de réveil) au lieu d'ouvrir le DFU. Le maintien de 6 s, une fois l'application lancée,
+  mène toujours au DFU.
+
 ## Mise à jour par Bluetooth depuis un PC (validée sur le boîtier le 2026-11-12)
 
 Outil : `tools/t1000_ble.py` (Python + bleak, BlueZ). Le T1000-A n'a pas de port série.
