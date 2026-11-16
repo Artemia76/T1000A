@@ -96,13 +96,14 @@ La séquence d'initialisation est exactement celle du T1000-E (EN, VRTC_EN, RESE
 |---|---|---|
 | Console / AT (câble magnétique) | UART0 TX=GPIO10, RX=GPIO11 (mux 2), 2 000 000 bauds dans la config par défaut | sûr (pins) / à vérifier (débit) |
 | Bouton | AON0 (`0x20`), entrée, interruption | probable |
-| LED | AON3 (`0x23`), aussi PWM1 (mux 5) à 100 Hz | probable |
+| LED | AON3 (`0x23`), aussi PWM1 (mux 5) à 100 Hz. **Seule LED** : l'inventaire de tous les appels GPIO du firmware Seeed (config `0x01035E80`, écriture `0x01035F28`) ne pilote aucune autre broche de LED. Tâche `APP_LED_TASK` à `0x01029620` (mode courant à `0x00804BB0`, posé par `0x01046A98(mode)`) ; `APP_CHARGE_TASK` (`0x01029200`…, lit AON4/AON5/MSIO0) lui envoie les modes 7 et 8 (indication de charge, motifs à décoder) | probable (broche), vérifié (unicité) |
 | Buzzer | PWM0 sur GPIO2 (mux 5), 1 kHz ; activation GPIO15 (`0x0f`) | probable |
 | Alimentation capteurs / mesure | GPIO14 (`0x0e`), mis à 1 au démarrage, basculé autour des mesures | probable |
 | I²C (capteurs, accéléromètre) | SCL=GPIO8, SDA=GPIO9 | probable |
 | Alimentation accéléromètre | GPIO7 | probable |
 | IRQ accéléromètre | AON2 (`0x22`) | probable |
-| État de charge | AON4, AON5, MSIO0 | probable |
+| Présence du câble de charge | MSIO0 (ADC) : ≈ 2490 mV câble branché, ≈ 35 mV débranché | **vérifié** (2026-11-14, console `chg`) |
+| État de charge | AON4 (pull-up) : 0 pendant la charge, 1 sinon (sortie du chargeur active à l'état bas, probablement « en charge ») ; AON5 resté à 1 câble branché ou non (fin de charge ? à vérifier batterie pleine) | AON4 vérifié (branché/débranché), rôle exact et AON5 à confirmer |
 | Détection du câble console | GPIO11 (`0x0b` = UART0 RX) lu en entrée pull-up au démarrage, juste avant l'init de l'UART0 (même fonction que les chaînes « Tracker T1000-A/B [Test] ») | probable |
 | ADC (batterie / capteurs) | **Batterie : MSIO4**, pont diviseur ÷2, activé par GPIO14 (fonction `0x01028DDC` → `0x01034914`). Voies logiques Seeed 0…4 = MSIO0…4 (n° 3 : lumière, LED AON3 éteinte pendant la mesure). Réglages : single-ended, réf. interne 1,28 V, 1 MHz, 20 échantillons, `app_adc_voltage_intern`. | **vérifié** (4198 mV mesurés, batterie pleine) |
 
@@ -113,6 +114,50 @@ Si l'application ne répond plus (aucun BLE, bouton sans effet, boucle de redém
 1. lancer sur le PC `tools/t1000_ble.py flash <image>_dfu.bin --name SENSECAP_GR_DFU -t 600` ;
 2. débrancher le cordon magnétique, **maintenir le bouton**, rebrancher le cordon en gardant l'appui quelques secondes ;
 3. le bootloader s'annonce en `SENSECAP_GR_DFU_xxxx` (fenêtre ≈ 3 min) et l'outil flashe l'image.
+
+## Arrêt véritable : veille ultra-profonde du GR5515 (essais du 2026-11-15)
+
+`pwr_mgmt_ultra_sleep(0)` du SDK, réveil par `hal_pwr_config_ext_wakeup`, sans RAM conservée :
+- **broches AON** : elles réveillent bien, AON0 (bouton) au niveau haut et AON4 (état du chargeur) au niveau bas,
+  ensemble. Pas de réveil parasite constaté (compteur de réveils exact) ;
+- **comparateur MSIO** (`app_comp`, MSIO0 = câble, seuil ≈ 1 V) : **ne réveille pas** depuis ce mode ;
+- **calendrier AON** : il repart de zéro au réveil, donc on ne peut pas mesurer la durée d'arrêt ;
+- **chaque réveil** passe par le bootloader Seeed, qui fait **clignoter la LED 2 fois**, puis par un démarrage
+  complet de l'application. Un appui d'environ 3 s suffit pour que le bouton soit encore enfoncé quand
+  l'application démarre ;
+- **récupération** : depuis cet état, la procédure « bouton + cordon » ci-dessus réveille l'application (le
+  bouton est une source de réveil) au lieu d'ouvrir le DFU. Le maintien de 6 s, une fois l'application lancée,
+  mène toujours au DFU.
+
+## LR1110 : comportements mesurés (sonde `lr`, 2026-11-16)
+
+Mesures faites sur le LR1110 du boîtier avec la commande console `lr` du firmware debug
+(`variants/t1000-a/LrProbe.cpp`, SPI brut sans RadioLib), et confrontées au manuel utilisateur LR1110 Rev 2.3.
+Les durées sont prises avec `micros()`, au pas de 30,5 µs (horloge 32 kHz) : ±30 µs.
+
+| Point | Mesure | Manuel |
+|---|---|---|
+| Version | matériel 0x22, LR1110, **firmware 03.07** | |
+| BUSY après une commande simple (GetStatus, SetPacketType, SetModulationParams, WriteBuffer8 de 255 o, SetRx, SetStandby RC) | 30 à 60 µs | |
+| BUSY après SetStandby XOSC ou SetFs depuis STBY_RC | ≈ 5 ms (démarrage du TCXO) | |
+| BUSY après CalibImage / Calibrate(0x3F) | 6,5 ms / 31 ms | |
+| Commande envoyée pendant BUSY haut | **perdue** | §3 : vérifier BUSY avant chaque commande |
+| Sommeil chaud, réveil par NSS | BUSY bas après ≈ 640 µs ; STBY_RC ; ResetStatus = 5 ; configuration et tampon RX conservés | §2.1.5, tableau 2-15 (< 1 ms) |
+| Sommeil froid, réveil par NSS | ≈ 13,3 ms ; configuration perdue (type de paquet 0) ; IRQ Error (bit 23) | §2.1.4 |
+| Transaction qui réveille la puce | **perdue**, même si c'est une vraie commande | §2.1.5 |
+| BUSY en sommeil | haut | §2.1.5 |
+| Expiration en RX | STBY_RC, quel que soit le mode de repli | §7.2.5 |
+| Tampons | TX (WriteBuffer8) et RX (ReadBuffer8) distincts | §8.9 |
+| Écoute cyclique, SF8 / 62,5 kHz, rx 36,8 ms, sommeil 59,5 ms | BUSY bas 36,5 ms puis BUSY **haut 64,7 ms** (sommeil + ≈ 5,2 ms de redémarrage du TCXO) : période 101,2 ms | §7.2.6, figure 7-2 |
+| Pendant le cycle | ResetStatus = 6 (redémarrage par la RTC) | §3.4.3 |
+| Préambule détecté | reste en RX jusqu'à la fin de la trame (> 500 ms pour une trame longue) | §7.2.6 : délai relancé à 2 × rx + sommeil |
+| **Après RX_DONE en écoute cyclique** | **STBY_RC, BUSY bas, cycle arrêté** ; trame lisible | §7.2.5 et §7.2.6 : mode de repli |
+| NSS pendant le sommeil du cycle | réveil en ≈ 640 µs, STBY_RC, ResetStatus = 5, **cycle arrêté** | §7.2.6 |
+| Ligne d'IRQ (AON1) en sommeil sans IRQ en attente | inactive, avec ou sans DriveDiosInSleepMode | §4.2.2 |
+
+Conséquence pour un pilote : pendant les 64,7 ms de sommeil du cycle, BUSY est haut. Une commande qui attend
+BUSY bas (RadioLib) patiente jusqu'à la fenêtre suivante. Une transaction envoyée sans attendre réveille la puce
+et met fin au cycle, et la commande qu'elle porte est perdue.
 
 ## Mise à jour par Bluetooth depuis un PC (validée sur le boîtier le 2026-11-12)
 

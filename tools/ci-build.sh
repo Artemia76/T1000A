@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Construit tout ce que T1000A intègre, aux révisions des sous-modules, et le fait passer au jumeau numérique.
 # C'est ce que lance la CI (.github/workflows/ci.yml) ; rejouable tel quel en local.
-#   tools/ci-build.sh             → cohérence des révisions, MeshCore (plateforme locale), blink, hello, jumeau
+#   tools/ci-build.sh             → cohérence des révisions, MeshCore release et debug (plateforme locale), blink,
+#                                   hello, jumeau (suite complète sur la debug, tests de la release)
 #   tools/ci-build.sh --no-twin   → sans le jumeau (≈ 7 min de moins)
 #   PIO=… PYTHON=…                → autres PlatformIO / Python (défauts : .venv/bin, sinon le PATH)
 set -euo pipefail
@@ -10,7 +11,7 @@ PIO=${PIO:-$ROOT/.venv/bin/pio};       [ -x "$PIO" ] || PIO=$(command -v pio)
 PYTHON=${PYTHON:-$ROOT/.venv/bin/python}; [ -x "$PYTHON" ] || PYTHON=$(command -v python3)
 abs() { case $1 in */*) echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")";; *) echo "$1";; esac; }
 PIO=$(abs "$PIO"); PYTHON=$(abs "$PYTHON")   # le script change de dossier
-ENV=t1000a_companion_radio_ble
+ENVS="t1000a_companion_radio_ble t1000a_companion_radio_ble_debug"   # release, debug (console, journal d'énergie)
 say() { printf '\n== %s\n' "$*"; }
 
 say "cohérence des révisions"
@@ -23,11 +24,21 @@ grep -q "GR551x.SDK.git#$sdk_pin" "$ROOT/platform/gr551x/platform.json" || {
 }
 echo "SDK ${sdk_pin:0:7} : sous-module = platform.json"
 
-say "MeshCore ($ENV, plateforme platform/gr551x)"
-ov=$(mktemp --suffix=.ini)
-trap 'rm -f "$ov"' EXIT
-printf '[env:%s]\nplatform = symlink://%s/platform/gr551x\n' "$ENV" "$ROOT" > "$ov"
-(cd "$ROOT/firmware/meshcore" && PLATFORMIO_EXTRA_CONFIGS=$ov "$PIO" run -e "$ENV")
+# MeshCore lit platformio.local.ini (extra_configs de son platformio.ini ; PLATFORMIO_EXTRA_CONFIGS est ignoré) :
+# s'il manque (CI), on le crée le temps des constructions pour prendre la plateforme du sous-module ; une copie
+# locale existante (développement) est laissée telle quelle.
+local_ini=$ROOT/firmware/meshcore/platformio.local.ini
+if [ ! -e "$local_ini" ]; then
+  printf '[t1000-a]\nplatform = symlink://%s/platform/gr551x\n' "$ROOT" > "$local_ini"
+  trap 'rm -f "$local_ini"' EXIT
+fi
+# Un paquet « gr551x » déjà installé (cache de la CI : v0.1.0) serait réutilisé à la place du symlink://.
+"$PIO" pkg uninstall -g -p gr551x >/dev/null 2>&1 || true
+for ENV in $ENVS; do
+  say "MeshCore ($ENV, plateforme platform/gr551x)"
+  (cd "$ROOT/firmware/meshcore" && "$PIO" run -e "$ENV")
+done
+grep -q "symlink://$ROOT/platform/gr551x" "$local_ini" || echo "attention : $local_ini ne relie pas platform/gr551x"
 
 say "exemple blink"
 (cd "$ROOT/platform/gr551x/examples/blink" && "$PIO" run -e t1000-a)
@@ -43,5 +54,5 @@ if [ "${1:-}" != --no-twin ]; then
   say "jumeau numérique"
   cd "$ROOT/emulator/twin"
   "$PYTHON" test_hello.py
-  "$PYTHON" -m pytest -q -p no:cacheprovider tests
+  "$PYTHON" -m pytest -q -p no:cacheprovider -n auto --dist loadfile tests
 fi
