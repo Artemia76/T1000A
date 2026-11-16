@@ -36,10 +36,9 @@ if [ "$n" -gt 0 ]; then
 fi
 
 if [ "${1:-}" = "--local" ]; then
-  ov=$(mktemp --suffix=.ini)
-  trap 'rm -f "$ov"' EXIT
-  printf '[env:%s]\nplatform = symlink://%s/platform/gr551x\n' "$ENV" "$ROOT" > "$ov"
-  export PLATFORMIO_EXTRA_CONFIGS=$ov
+  # shellcheck source=tools/local-platform.sh
+  . "$ROOT/tools/local-platform.sh"
 fi
 "$PIO" run -e "$ENV"
+[ "${1:-}" != "--local" ] || check_local_platform
 ls -l ".pio/build/$ENV/firmware_dfu.bin"

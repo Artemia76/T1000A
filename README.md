@@ -23,9 +23,10 @@ Puis :
 | Firmware MeshCore compagnon BLE, release | `cd firmware/meshcore && ../../.venv/bin/pio run -e t1000a_companion_radio_ble` |
 | Firmware MeshCore compagnon BLE, debug (console BLE, journal d'énergie, diagnostics) | `cd firmware/meshcore && ../../.venv/bin/pio run -e t1000a_companion_radio_ble_debug` |
 | Exemple blink de la plateforme | `cd platform/gr551x/examples/blink && ../../../../.venv/bin/pio run` |
-| Firmware de test hello (GCC système) | `make -C firmware/hello` |
-| Tests du jumeau numérique | `cd emulator/twin && ../../.venv/bin/python -m pytest -q tests` |
+| Firmware de test hello (historique, GCC système) | `make -C firmware/hello [test]` |
+| Tests du jumeau numérique | `cd emulator/twin && ../../.venv/bin/python -m pytest -q -n auto --dist loadfile` |
 | Flash BLE (refusé si le jumeau échoue) | `.venv/bin/python tools/t1000_ble.py flash <image>_dfu.bin` |
+| Intégration complète (ce que fait la CI) | `tools/ci-build.sh [--no-twin]` |
 | Rebase du fork MeshCore sur l'amont | `tools/sync-upstream.sh [--local]` |
 
 ## Contenu
@@ -33,14 +34,14 @@ Puis :
 | Dossier | Nature | Rôle |
 |---|---|---|
 | `firmware/meshcore/` | sous-module, [fork MeshCore](https://github.com/Artemia76/MeshCore) (`feature/t1000a-gr5515`) | Firmware MeshCore, variante `t1000-a` |
-| `firmware/hello/` | versionné ici | Firmware de test et de diagnostic (Makefile, SDK direct) |
+| `firmware/hello/` | versionné ici | Premier firmware de test et de diagnostic (Makefile, SDK direct), figé ; validé par `emulator/twin/legacy/check_hello.py` |
 | `platform/gr551x/` | sous-module, [platform-gr551x](https://github.com/Artemia76/platform-gr551x) | Plateforme PlatformIO + cœur Arduino GR551x, outils BLE/DFU |
 | `emulator/twin/` | sous-module, [t1000a-twin](https://github.com/Artemia76/t1000a-twin) | Jumeau numérique du T1000-A et ses tests |
 | `third_party/gr551x-sdk/` | sous-module, [fork du SDK Goodix](https://github.com/Artemia76/GR551x.SDK) (`platformio`) | SDK du GR551x (hello, symboles ROM du jumeau) |
 | `third_party/radiolib/` | sous-module, [RadioLib](https://github.com/jgromes/RadioLib) | Pilote LR1110 (hello) |
 | `third_party/goodix-dfu-android/` | sous-module non initialisé par défaut | Référence du protocole DFU Goodix |
-| `tools/` | versionné ici | `setup.sh`, `sync-upstream.sh`, `ci-build.sh`, `ci-issue.sh`, `meshcore_ble.py` ; `t1000_ble.py` et `mkimage.py` sont des liens symboliques vers `platform/gr551x/tools/` |
-| `docs/` | versionné ici | Matériel du T1000-A relevé par rétro-ingénierie |
+| `tools/` | versionné ici | `setup.sh`, `sync-upstream.sh`, `ci-build.sh` (et `local-platform.sh`, qu'ils partagent), `ci-issue.sh`, `meshcore_ble.py` ; `t1000_ble.py` et `mkimage.py` sont des liens symboliques vers `platform/gr551x/tools/` |
+| `docs/` | versionné ici | Matériel du T1000-A relevé par rétro-ingénierie ; `upstream/` : demande faite à MeshCore (historique) |
 
 Règle de rangement : `firmware/`, `platform/` et `emulator/` contiennent nos composants, `third_party/` le code des
 autres, forké ou non.
