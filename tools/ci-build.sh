@@ -24,6 +24,9 @@ grep -q "GR551x.SDK.git#$sdk_pin" "$ROOT/platform/gr551x/platform.json" || {
 }
 echo "SDK ${sdk_pin:0:7} : sous-module = platform.json"
 
+# Un paquet « gr551x » déjà installé (cache de la CI : v0.1.0 de platformio.ini) serait réutilisé à la place du
+# symlink:// ci-dessous : on le désinstalle, la construction relie alors platform/gr551x.
+"$PIO" pkg uninstall -g -p gr551x >/dev/null 2>&1 || true
 ov=$(mktemp --suffix=.ini)
 trap 'rm -f "$ov"' EXIT
 for ENV in $ENVS; do
