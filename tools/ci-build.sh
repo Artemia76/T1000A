@@ -46,5 +46,5 @@ if [ "${1:-}" != --no-twin ]; then
   say "jumeau numérique"
   cd "$ROOT/emulator/twin"
   "$PYTHON" test_hello.py
-  "$PYTHON" -m pytest -q -p no:cacheprovider tests
+  "$PYTHON" -m pytest -q -p no:cacheprovider -n auto --dist loadfile tests
 fi
