@@ -32,4 +32,6 @@ jobs:
           path: |
             firmware/meshcore/.pio/build/t1000a_companion_radio_ble/firmware_dfu.bin
             firmware/meshcore/.pio/build/t1000a_companion_radio_ble/firmware.elf
+            firmware/meshcore/.pio/build/t1000a_companion_radio_ble_debug/firmware_dfu.bin
+            firmware/meshcore/.pio/build/t1000a_companion_radio_ble_debug/firmware.elf
             firmware/hello/build/t1000a_hello_dfu.bin

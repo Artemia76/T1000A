@@ -20,7 +20,8 @@ Puis :
 
 | Cible | Commande |
 |---|---|
-| Firmware MeshCore compagnon BLE | `cd firmware/meshcore && ../../.venv/bin/pio run -e t1000a_companion_radio_ble` |
+| Firmware MeshCore compagnon BLE, release | `cd firmware/meshcore && ../../.venv/bin/pio run -e t1000a_companion_radio_ble` |
+| Firmware MeshCore compagnon BLE, debug (console BLE, journal d'énergie, diagnostics) | `cd firmware/meshcore && ../../.venv/bin/pio run -e t1000a_companion_radio_ble_debug` |
 | Exemple blink de la plateforme | `cd platform/gr551x/examples/blink && ../../../../.venv/bin/pio run` |
 | Firmware de test hello (GCC système) | `make -C firmware/hello` |
 | Tests du jumeau numérique | `cd emulator/twin && ../../.venv/bin/python -m pytest -q tests` |
@@ -59,7 +60,7 @@ git submodule update --remote firmware/meshcore    # suivre la branche déclaré
 
 | Mécanisme | Où | Ce qu'il fait |
 |---|---|---|
-| CI (`.github/workflows/ci.yml`) | push sur `main`, PR | `tools/ci-build.sh` : cohérence SDK sous-module / `platform.json`, MeshCore avec la plateforme du sous-module, blink, hello, jumeau numérique. Rejouable en local |
+| CI (`.github/workflows/ci.yml`) | push sur `main`, PR | `tools/ci-build.sh` : cohérence SDK sous-module / `platform.json`, MeshCore release et debug avec la plateforme du sous-module, blink, hello, jumeau numérique (suite complète sur la debug, tests de la release). Rejouable en local |
 | Dependabot (`.github/dependabot.yml`) | chaque lundi | Une PR par sous-module qui a avancé (MeshCore, plateforme, jumeau, RadioLib), validée par la CI ; actions GitHub chaque mois |
 | Amont (`.github/workflows/upstream-watch.yml`) | chaque lundi | MeshCore `dev` a avancé : rebase du fork, compilation, jumeau, puis issue « Amont : MeshCore dev » avec le résultat. Nouveaux commits Goodix : issue « Amont : SDK Goodix » |
 | ArduinoCore-API (workflow de la plateforme) | chaque mois | Copie de `cores/gr551x/api` refaite avec nos patchs, blink compilé, PR dans platform-gr551x |
