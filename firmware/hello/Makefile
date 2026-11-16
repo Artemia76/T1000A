@@ -5,6 +5,7 @@
 
 TARGET   := t1000a_hello
 ROOT     := $(abspath ../..)
+PYTHON   ?= $(firstword $(wildcard $(ROOT)/.venv/bin/python $(ROOT)/.claude-work/.venv/bin/python) python3)
 SDK      ?= $(ROOT)/third_party/gr551x-sdk
 BUILD    ?= build
 MKIMAGE  := python3 -I $(ROOT)/tools/mkimage.py
@@ -114,7 +115,7 @@ $(BUILD)/obj:
 
 # Validation dans l'émulateur GR5515 (recompile d'abord : jamais de test sur un ELF périmé)
 test: $(BUILD)/$(TARGET)_dfu.bin
-	$(ROOT)/.claude-work/.venv/bin/python -I $(ROOT)/tools/sim/test_hello.py $(BUILD)/$(TARGET).elf
+	$(PYTHON) -I $(ROOT)/emulator/twin/legacy/check_hello.py $(BUILD)/$(TARGET).elf
 
 clean:
 	rm -rf $(BUILD)

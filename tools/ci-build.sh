@@ -24,21 +24,13 @@ grep -q "GR551x.SDK.git#$sdk_pin" "$ROOT/platform/gr551x/platform.json" || {
 }
 echo "SDK ${sdk_pin:0:7} : sous-module = platform.json"
 
-# MeshCore lit platformio.local.ini (extra_configs de son platformio.ini ; PLATFORMIO_EXTRA_CONFIGS est ignoré) :
-# s'il manque (CI), on le crée le temps des constructions pour prendre la plateforme du sous-module ; une copie
-# locale existante (développement) est laissée telle quelle.
-local_ini=$ROOT/firmware/meshcore/platformio.local.ini
-if [ ! -e "$local_ini" ]; then
-  printf '[t1000-a]\nplatform = symlink://%s/platform/gr551x\n' "$ROOT" > "$local_ini"
-  trap 'rm -f "$local_ini"' EXIT
-fi
-# Un paquet « gr551x » déjà installé (cache de la CI : v0.1.0) serait réutilisé à la place du symlink://.
-"$PIO" pkg uninstall -g -p gr551x >/dev/null 2>&1 || true
+# shellcheck source=tools/local-platform.sh
+. "$ROOT/tools/local-platform.sh"
 for ENV in $ENVS; do
   say "MeshCore ($ENV, plateforme platform/gr551x)"
   (cd "$ROOT/firmware/meshcore" && "$PIO" run -e "$ENV")
 done
-grep -q "symlink://$ROOT/platform/gr551x" "$local_ini" || echo "attention : $local_ini ne relie pas platform/gr551x"
+check_local_platform
 
 say "exemple blink"
 (cd "$ROOT/platform/gr551x/examples/blink" && "$PIO" run -e t1000-a)
@@ -53,6 +45,6 @@ make -C "$ROOT/firmware/hello" -j"$(nproc)" CROSS="$cross"
 if [ "${1:-}" != --no-twin ]; then
   say "jumeau numérique"
   cd "$ROOT/emulator/twin"
-  "$PYTHON" test_hello.py
-  "$PYTHON" -m pytest -q -p no:cacheprovider -n auto --dist loadfile tests
+  "$PYTHON" legacy/check_hello.py
+  "$PYTHON" -m pytest -q -n auto --dist loadfile tests
 fi

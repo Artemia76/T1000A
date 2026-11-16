@@ -1,3 +1,7 @@
+> **Historique.** Texte de l'issue [meshcore-dev/MeshCore#3829](https://github.com/meshcore-dev/MeshCore/issues/3829)
+> (novembre 2026). Réponse de l'équipe : pas d'intégration en mainline pour un cœur Arduino non soutenu ; le
+> port est maintenu dans le fork [Artemia76/MeshCore](https://github.com/Artemia76/MeshCore) (`feature/t1000a-gr5515`).
+
 [Feature request] Support for SenseCAP T1000-A (Goodix GR5515 + LR1110)
 
 ## Summary
