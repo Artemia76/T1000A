@@ -129,6 +129,36 @@ Si l'application ne répond plus (aucun BLE, bouton sans effet, boucle de redém
   bouton est une source de réveil) au lieu d'ouvrir le DFU. Le maintien de 6 s, une fois l'application lancée,
   mène toujours au DFU.
 
+## LR1110 : comportements mesurés (sonde `lr`, 2026-11-16)
+
+Mesures faites sur le LR1110 du boîtier avec la commande console `lr` du firmware debug
+(`variants/t1000-a/LrProbe.cpp`, SPI brut sans RadioLib), et confrontées au manuel utilisateur LR1110 Rev 2.3.
+Les durées sont prises avec `micros()`, au pas de 30,5 µs (horloge 32 kHz) : ±30 µs.
+
+| Point | Mesure | Manuel |
+|---|---|---|
+| Version | matériel 0x22, LR1110, **firmware 03.07** | |
+| BUSY après une commande simple (GetStatus, SetPacketType, SetModulationParams, WriteBuffer8 de 255 o, SetRx, SetStandby RC) | 30 à 60 µs | |
+| BUSY après SetStandby XOSC ou SetFs depuis STBY_RC | ≈ 5 ms (démarrage du TCXO) | |
+| BUSY après CalibImage / Calibrate(0x3F) | 6,5 ms / 31 ms | |
+| Commande envoyée pendant BUSY haut | **perdue** | §3 : vérifier BUSY avant chaque commande |
+| Sommeil chaud, réveil par NSS | BUSY bas après ≈ 640 µs ; STBY_RC ; ResetStatus = 5 ; configuration et tampon RX conservés | §2.1.5, tableau 2-15 (< 1 ms) |
+| Sommeil froid, réveil par NSS | ≈ 13,3 ms ; configuration perdue (type de paquet 0) ; IRQ Error (bit 23) | §2.1.4 |
+| Transaction qui réveille la puce | **perdue**, même si c'est une vraie commande | §2.1.5 |
+| BUSY en sommeil | haut | §2.1.5 |
+| Expiration en RX | STBY_RC, quel que soit le mode de repli | §7.2.5 |
+| Tampons | TX (WriteBuffer8) et RX (ReadBuffer8) distincts | §8.9 |
+| Écoute cyclique, SF8 / 62,5 kHz, rx 36,8 ms, sommeil 59,5 ms | BUSY bas 36,5 ms puis BUSY **haut 64,7 ms** (sommeil + ≈ 5,2 ms de redémarrage du TCXO) : période 101,2 ms | §7.2.6, figure 7-2 |
+| Pendant le cycle | ResetStatus = 6 (redémarrage par la RTC) | §3.4.3 |
+| Préambule détecté | reste en RX jusqu'à la fin de la trame (> 500 ms pour une trame longue) | §7.2.6 : délai relancé à 2 × rx + sommeil |
+| **Après RX_DONE en écoute cyclique** | **STBY_RC, BUSY bas, cycle arrêté** ; trame lisible | §7.2.5 et §7.2.6 : mode de repli |
+| NSS pendant le sommeil du cycle | réveil en ≈ 640 µs, STBY_RC, ResetStatus = 5, **cycle arrêté** | §7.2.6 |
+| Ligne d'IRQ (AON1) en sommeil sans IRQ en attente | inactive, avec ou sans DriveDiosInSleepMode | §4.2.2 |
+
+Conséquence pour un pilote : pendant les 64,7 ms de sommeil du cycle, BUSY est haut. Une commande qui attend
+BUSY bas (RadioLib) patiente jusqu'à la fenêtre suivante. Une transaction envoyée sans attendre réveille la puce
+et met fin au cycle, et la commande qu'elle porte est perdue.
+
 ## Mise à jour par Bluetooth depuis un PC (validée sur le boîtier le 2026-11-12)
 
 Outil : `tools/t1000_ble.py` (Python + bleak, BlueZ). Le T1000-A n'a pas de port série.
