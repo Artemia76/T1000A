@@ -175,6 +175,10 @@ Firmware debug avec la sonde de plateforme (branche `probe/sched`), protocole `.
 - En mode actif, `pwr_mgmt_schedule()` ne bloque pas : un CPU qui ne dort plus fait ≈ 5 000 tours/s, pas 1.
 - `loop()` du compagnon est ≈ 6 fois plus lente que dans le jumeau (1 instruction = 1 cycle à 64 MHz).
 - Pire tour mesuré : `sensors.loop()` (GNSS) 154 ms.
+- `sched cpu` (IRQ coupées) : cœur **64,0 MHz** (CYCCNT contre calendrier 32 kHz) ; `gr551x_ticks32k()`
+  **101 cycles** (1,6 µs, dont ≈ 57 pour les accès AON), `millis()` 124 ; lecture AON `TIMER_VAL` ≈ 10 cycles ;
+  SHA-256 de 1 Ko **113 000 cycles** pour 68 909 instructions (**1,64 cycle/instruction**) ; boucle
+  `subs`/`bne` 3 ou 5 cycles par tour selon l'alignement en Flash (cache XIP). Jumeau recalé (t1000a-twin d09cb8d).
 
 ## Mise à jour par Bluetooth depuis un PC (validée sur le boîtier le 2026-11-12)
 
@@ -223,6 +227,7 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | **Compagnon MeshCore** (`t1000a_companion_radio_ble`, platform-gr551x) | Démarrage complet (LR1110 via RadioLib/ArduinoHal, LittleFS formaté, identité créée), annonce `MeshCore-FD2817387A8F` (service Nordic UART). Protocole compagnon depuis le PC : `DEVICE_INFO` (v1.18.0, Seeed Tracker T1000-A), `SELF_INFO`. `SEND_SELF_ADVERT` → **advert reçu par le Heltec : émission LoRa validée.** Pas encore d'appairage BLE par PIN. |
 | 2026-11-12 | Compagnon + appairage PIN + batterie | `bat` (console) : **4198 mV** (MSIO4 2099 mV ×2). Appairage par code fixe (affichage seul) implémenté, à tester avec l'application. |
 | 2026-11-17 | Firmware de sonde `sched` + `pending` (debug) | Flash OK. Mesures de l'ordonnanceur (section ci-dessus). |
+| 2026-11-17 | Sonde `sched cpu` (2 flashs) | Flash OK. Horloge, coût des lectures d'horloge, CPI (section ci-dessus). |
 
 ### Analyse de l'échec de `hello-0.1`
 
