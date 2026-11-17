@@ -6,6 +6,7 @@ build/
 *.hex
 # Environnements Python
 .venv/
+.claude
 __pycache__/
 
 # Firmware Seeed d'origine (propriétaire) : conservé localement, jamais versionné
