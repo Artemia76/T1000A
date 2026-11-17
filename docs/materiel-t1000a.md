@@ -159,6 +159,23 @@ Conséquence pour un pilote : pendant les 64,7 ms de sommeil du cycle, BUSY est 
 BUSY bas (RadioLib) patiente jusqu'à la fenêtre suivante. Une transaction envoyée sans attendre réveille la puce
 et met fin au cycle, et la commande qu'elle porte est perdue.
 
+## GR5515 : ordonnanceur et veille légère (sonde `sched`, 2026-11-17)
+
+Firmware debug avec la sonde de plateforme (branche `probe/sched`), protocole `.claude-work/tools/probe_sched.sh`.
+
+| Situation | Sorties de veille | Veille moy. / max | `loop()` moy. / max |
+|---|---|---|---|
+| Console BLE connectée (Linux, intervalle ≈ 45 ms) | ≈ 35–64 /s | 28 ms / 159 ms | 574 µs / 4 ms |
+| Sans connexion (annonce `adv_intv_max` 152,5 ms) | ≈ 16 /s | 66 ms / 159 ms | 476 µs / 4 ms |
+| CPU tenu éveillé (`sched awake`) | — | `pwr_mgmt_schedule()` actif : 10 µs, max 1 ms | 170 µs / 4 ms, ≈ 5 000 tours/s |
+
+- En veille (`PMR_MGMT_IDLE_MODE`), la ROM rend la main à **chaque événement radio BLE**, deux fois par
+  événement d'annonce (début, fin), sans interruption pour l'application : seuls ≈ 10 % des réveils
+  s'accompagnent d'un `gr551x_wake_events`.
+- En mode actif, `pwr_mgmt_schedule()` ne bloque pas : un CPU qui ne dort plus fait ≈ 5 000 tours/s, pas 1.
+- `loop()` du compagnon est ≈ 6 fois plus lente que dans le jumeau (1 instruction = 1 cycle à 64 MHz).
+- Pire tour mesuré : `sensors.loop()` (GNSS) 154 ms.
+
 ## Mise à jour par Bluetooth depuis un PC (validée sur le boîtier le 2026-11-12)
 
 Outil : `tools/t1000_ble.py` (Python + bleak, BlueZ). Le T1000-A n'a pas de port série.
@@ -205,6 +222,7 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | `blink-0.1` corrigé : code de démarrage relié en dernier | **Croquis Arduino opérationnel** : annonce `T1000A-Arduino`, console (info, btn, led, `Serial` → console), `pio run -t upload` de bout en bout (dfu par la console + FastDfu) en 20 s. |
 | 2026-11-12 | **Compagnon MeshCore** (`t1000a_companion_radio_ble`, platform-gr551x) | Démarrage complet (LR1110 via RadioLib/ArduinoHal, LittleFS formaté, identité créée), annonce `MeshCore-FD2817387A8F` (service Nordic UART). Protocole compagnon depuis le PC : `DEVICE_INFO` (v1.18.0, Seeed Tracker T1000-A), `SELF_INFO`. `SEND_SELF_ADVERT` → **advert reçu par le Heltec : émission LoRa validée.** Pas encore d'appairage BLE par PIN. |
 | 2026-11-12 | Compagnon + appairage PIN + batterie | `bat` (console) : **4198 mV** (MSIO4 2099 mV ×2). Appairage par code fixe (affichage seul) implémenté, à tester avec l'application. |
+| 2026-11-17 | Firmware de sonde `sched` + `pending` (debug) | Flash OK. Mesures de l'ordonnanceur (section ci-dessus). |
 
 ### Analyse de l'échec de `hello-0.1`
 
