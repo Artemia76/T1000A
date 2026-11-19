@@ -98,7 +98,7 @@ La séquence d'initialisation est exactement celle du T1000-E (EN, VRTC_EN, RESE
 | Bouton | AON0 (`0x20`), entrée, interruption | probable |
 | LED | AON3 (`0x23`), aussi PWM1 (mux 5) à 100 Hz. **Seule LED** : l'inventaire de tous les appels GPIO du firmware Seeed (config `0x01035E80`, écriture `0x01035F28`) ne pilote aucune autre broche de LED. Tâche `APP_LED_TASK` à `0x01029620` (mode courant à `0x00804BB0`, posé par `0x01046A98(mode)`) ; `APP_CHARGE_TASK` (`0x01029200`…, lit AON4/AON5/MSIO0) lui envoie les modes 7 et 8 (indication de charge, motifs à décoder) | probable (broche), vérifié (unicité) |
 | Buzzer | PWM0 sur GPIO2 (mux 5), 1 kHz ; activation GPIO15 (`0x0f`) | probable |
-| Alimentation capteurs / mesure | GPIO14 (`0x0e`), mis à 1 au démarrage, basculé autour des mesures | probable |
+| Pont de mesure de la batterie | GPIO14 (`0x0e`) : le firmware Seeed le met à 1 au démarrage, puis seulement autour de chaque lecture ADC (10 occurrences, toutes suivies d'une lecture puis d'un retour à 0 : batterie, lumière, voie 2) ; rien autour de la LR1110. MeshCore : à 1 seulement pendant la lecture (2 ms de stabilisation) | **vérifié** dans le firmware Seeed (2026-11-19) ; à confirmer sur le boîtier (console `bat`) |
 | I²C (capteurs, accéléromètre) | SCL=GPIO8, SDA=GPIO9 | probable |
 | Alimentation accéléromètre | GPIO7 | probable |
 | IRQ accéléromètre | AON2 (`0x22`) | probable |
