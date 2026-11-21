@@ -230,6 +230,7 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-17 | Firmware de sonde `sched` + `pending` (debug) | Flash OK. Mesures de l'ordonnanceur (section ci-dessus). |
 | 2026-11-17 | Sonde `sched cpu` (2 flashs) | Flash OK. Horloge, coût des lectures d'horloge, CPI (section ci-dessus). |
 | 2026-11-21 | Écoute continue tant que l'appli est connectée (MeshCore e9d0c473) | Flash OK. Session appli de 20 min : journal `0x5a` (cycle suspendu), puis « cycling » 30 s après la fermeture. Motif : le cycle (60 / 65 ms) est dimensionné pour des préambules de 32 symboles ; ceux de 16 (répéteurs ≤ 1.15) durent un sommeil, 21 à 52 % de leurs trames sont perdues (modèle). |
+| 2026-11-21 | Retour arrière : écoute cyclique en tout temps (revert de e9d0c473) | Le « un ping Mesh Mapper sur deux » ne venait pas de la radio : les pings TX de l'appli partent dans la région `#fr-nor` (scope fixé par le serveur Mesh Mapper), inconnue du répéteur voisin, qui les jetait ; les découvertes (0 saut, sans région) passaient. Après `region put fr-nor fr` sur le répéteur, ping relayé. Les nœuds du secteur étant à jour (préambule de 32 symboles), l'écoute continue (≈ +4 mA en session) est retirée. |
 
 ### Analyse de l'échec de `hello-0.1`
 
