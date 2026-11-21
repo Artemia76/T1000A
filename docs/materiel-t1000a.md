@@ -229,6 +229,7 @@ vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 | 2026-11-12 | Compagnon + appairage PIN + batterie | `bat` (console) : **4198 mV** (MSIO4 2099 mV ×2). Appairage par code fixe (affichage seul) implémenté, à tester avec l'application. |
 | 2026-11-17 | Firmware de sonde `sched` + `pending` (debug) | Flash OK. Mesures de l'ordonnanceur (section ci-dessus). |
 | 2026-11-17 | Sonde `sched cpu` (2 flashs) | Flash OK. Horloge, coût des lectures d'horloge, CPI (section ci-dessus). |
+| 2026-11-21 | Écoute continue tant que l'appli est connectée (MeshCore e9d0c473) | Flash OK. Session appli de 20 min : journal `0x5a` (cycle suspendu), puis « cycling » 30 s après la fermeture. Motif : le cycle (60 / 65 ms) est dimensionné pour des préambules de 32 symboles ; ceux de 16 (répéteurs ≤ 1.15) durent un sommeil, 21 à 52 % de leurs trames sont perdues (modèle). |
 
 ### Analyse de l'échec de `hello-0.1`
 
