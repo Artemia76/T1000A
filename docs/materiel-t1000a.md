@@ -202,8 +202,8 @@ Essai réel : firmware Seeed v2.5 (373 Ko) réinstallé à la place de la V2.8, 
 vérifiée, redémarrage correct (`AT+VER=?` → `V2.5`).
 
 ```
-.claude-work/.venv/bin/python -I tools/t1000_ble.py at 'AT+VER=?'
-.claude-work/.venv/bin/python -I tools/t1000_ble.py flash FICHIER_dfu.bin --enter-dfu <nom>-T1000 [--dry-run]
+.venv/bin/python -I tools/t1000_ble.py at 'AT+VER=?'
+.venv/bin/python -I tools/t1000_ble.py flash FICHIER_dfu.bin --enter-dfu <nom>-T1000 [--dry-run]
 ```
 
 ## Journal des essais sur le boîtier
