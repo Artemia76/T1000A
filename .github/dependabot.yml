@@ -12,6 +12,8 @@ updates:
       # Référence seulement (update = none), et le SDK se met à jour avec platform.json (workflow Amont)
       - dependency-name: third_party/goodix-dfu-android
       - dependency-name: third_party/gr551x-sdk
+      # Ne sert qu'au firmware hello, gardé en archive figée
+      - dependency-name: third_party/radiolib
   - package-ecosystem: github-actions
     directories: [/, /.github/actions/setup]
     target-branch: main
