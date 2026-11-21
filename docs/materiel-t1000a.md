@@ -160,6 +160,24 @@ Conséquence pour un pilote : pendant les 64,7 ms de sommeil du cycle, BUSY est 
 BUSY bas (RadioLib) patiente jusqu'à la fenêtre suivante. Une transaction envoyée sans attendre réveille la puce
 et met fin au cycle, et la commande qu'elle porte est perdue.
 
+Constats en usage réel (18-21/11, firmware debug, compteurs `rxdiag` / `pending`) :
+
+- **File d'envoi gelée pendant des heures (18/11)** : `Dispatcher::checkSend()` appelle `getEstAirtimeFor()`, qui
+  passait par `LR11x0::getTimeOnAir()` → `getPacketType()` (SPI). Radio endormie, BUSY haut : 1 s de délai SPI, puis
+  le code d'erreur −20 interprété comme une durée (≈ 4,3 × 10⁹ µs) → budget d'antenne épuisé pour ≈ 5 h. Symptômes :
+  boucle à 1 s par tour, appli lente, contacts qui ne chargent pas, CPU sans veille. Correctif : durée d'émission
+  calculée sans SPI (`CustomLR1110::getLoRaTimeOnAir` → `getToA`), chien de garde « stuck asleep ». Signalé à RadioLib (#1961, corrigé sur
+  master : `getTimeOnAir` renverra 0 en cas d'erreur).
+- **Commande perdue à la frontière du sommeil (18-19/11)** : une commande qui arrive pile quand la radio s'endort
+  entre deux fenêtres la laisse endormie sans réveil RTC (STANDBY → −705 après 1 s). Correctif : nouvel essai de
+  STANDBY après un délai SPI dépassé ; observé 1 fois en 23 h, rattrapé sans perte.
+- **Rejets CRC en zone dense (19/11)** : RadioLib −7 couvre CRC des données *et* en-tête invalide. En région parisienne,
+  227 rejets pour 205 trames bonnes, concentrés dans le trafic dense (collisions probables) ; en zone calme, les
+  rejets sont < −115 dBm et SNR < −7 dB (limite de SF8). Classement crc/header dans `rxdiag`.
+- **Préambules courts** : le cycle 60 / 65 ms est dimensionné pour des préambules de 32 symboles (MeshCore ≥ 1.16,
+  SF ≤ 8). Un émetteur à 16 symboles (≤ 1.15) dure environ un sommeil : 21 à 52 % de ses trames perdues selon le
+  modèle. Les nœuds du secteur étant à jour, l'écoute cyclique reste active en permanence.
+
 ## GR5515 : ordonnanceur et veille légère (sonde `sched`, 2026-11-17)
 
 Firmware debug avec la sonde de plateforme (branche `probe/sched`), protocole `.claude-work/tools/probe_sched.sh`.
