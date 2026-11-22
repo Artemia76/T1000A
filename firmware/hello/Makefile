@@ -5,7 +5,7 @@
 
 TARGET   := t1000a_hello
 ROOT     := $(abspath ../..)
-PYTHON   ?= $(firstword $(wildcard $(ROOT)/.venv/bin/python $(ROOT)/.claude-work/.venv/bin/python) python3)
+PYTHON   ?= $(firstword $(wildcard $(ROOT)/.venv/bin/python) python3)
 SDK      ?= $(ROOT)/third_party/gr551x-sdk
 BUILD    ?= build
 MKIMAGE  := python3 -I $(ROOT)/tools/mkimage.py

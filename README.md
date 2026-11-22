@@ -34,13 +34,13 @@ Puis :
 | Dossier | Nature | Rôle |
 |---|---|---|
 | `firmware/meshcore/` | sous-module, [fork MeshCore](https://github.com/Artemia76/MeshCore) (`feature/t1000a-gr5515`) | Firmware MeshCore, variante `t1000-a` |
-| `firmware/hello/` | versionné ici | Premier firmware de test et de diagnostic (Makefile, SDK direct), figé ; validé par `emulator/twin/legacy/check_hello.py` |
+| `firmware/hello/` | versionné ici | Premier firmware de test et de diagnostic (Makefile, SDK direct), **archive figée** (plus d'évolution, RadioLib n'est plus suivi) ; validé par `emulator/twin/legacy/check_hello.py` |
 | `platform/gr551x/` | sous-module, [platform-gr551x](https://github.com/Artemia76/platform-gr551x) | Plateforme PlatformIO + cœur Arduino GR551x, outils BLE/DFU |
 | `emulator/twin/` | sous-module, [t1000a-twin](https://github.com/Artemia76/t1000a-twin) | Jumeau numérique du T1000-A et ses tests |
 | `third_party/gr551x-sdk/` | sous-module, [fork du SDK Goodix](https://github.com/Artemia76/GR551x.SDK) (`platformio`) | SDK du GR551x (hello, symboles ROM du jumeau) |
-| `third_party/radiolib/` | sous-module, [RadioLib](https://github.com/jgromes/RadioLib) | Pilote LR1110 (hello) |
+| `third_party/radiolib/` | sous-module, [RadioLib](https://github.com/jgromes/RadioLib) | Pilote LR1110 (hello), figé avec lui |
 | `third_party/goodix-dfu-android/` | sous-module non initialisé par défaut | Référence du protocole DFU Goodix |
-| `tools/` | versionné ici | `setup.sh`, `sync-upstream.sh`, `ci-build.sh` (et `local-platform.sh`, qu'ils partagent), `ci-issue.sh`, `meshcore_ble.py` ; `t1000_ble.py` et `mkimage.py` sont des liens symboliques vers `platform/gr551x/tools/` |
+| `tools/` | versionné ici | `setup.sh`, `sync-upstream.sh`, `ci-build.sh` (et `local-platform.sh`, qu'ils partagent), `ci-issue.sh` ; `t1000_ble.py` et `mkimage.py` sont des liens symboliques vers `platform/gr551x/tools/` |
 | `docs/` | versionné ici | Matériel du T1000-A relevé par rétro-ingénierie ; `upstream/` : demande faite à MeshCore (historique) |
 
 Règle de rangement : `firmware/`, `platform/` et `emulator/` contiennent nos composants, `third_party/` le code des
@@ -62,7 +62,7 @@ git submodule update --remote firmware/meshcore    # suivre la branche déclaré
 | Mécanisme | Où | Ce qu'il fait |
 |---|---|---|
 | CI (`.github/workflows/ci.yml`) | push sur `main`, PR | `tools/ci-build.sh` : cohérence SDK sous-module / `platform.json`, MeshCore release et debug avec la plateforme du sous-module, blink, hello, jumeau numérique (suite complète sur la debug, tests de la release). Rejouable en local |
-| Dependabot (`.github/dependabot.yml`) | chaque lundi | Une PR par sous-module qui a avancé (MeshCore, plateforme, jumeau, RadioLib), validée par la CI ; actions GitHub chaque mois |
+| Dependabot (`.github/dependabot.yml`) | chaque lundi | Une PR par sous-module qui a avancé (MeshCore, plateforme, jumeau), validée par la CI ; actions GitHub chaque mois |
 | Amont (`.github/workflows/upstream-watch.yml`) | chaque lundi | MeshCore `dev` a avancé : rebase du fork, compilation, jumeau, puis issue « Amont : MeshCore dev » avec le résultat. Nouveaux commits Goodix : issue « Amont : SDK Goodix » |
 | ArduinoCore-API (workflow de la plateforme) | chaque mois | Copie de `cores/gr551x/api` refaite avec nos patchs, blink compilé, PR dans platform-gr551x |
 
