@@ -6,7 +6,7 @@ runs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-    - uses: actions/cache@v4
+    - uses: actions/cache@v6
       with:
         path: ~/.platformio
         key: pio-${{ hashFiles('platform/gr551x/platform.json', 'firmware/meshcore/variants/t1000-a/platformio.ini') }}
