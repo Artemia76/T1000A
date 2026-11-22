@@ -3,7 +3,7 @@ description: Python, PlatformIO (paquets en cache) et dépendances du jumeau num
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v7
       with:
         python-version: '3.12'
     - uses: actions/cache@v4
