@@ -34,7 +34,7 @@ jobs:
           echo "upstream/dev : $n commit(s) absents de $BRANCH"
           echo "n=$n" >> "$GITHUB_OUTPUT"
       - if: steps.behind.outputs.n != '0'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           # Sinon git envoie le jeton du workflow (en-tête http.extraheader) au lieu de MESHCORE_FORK_TOKEN
@@ -105,7 +105,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Nouveaux commits Goodix
         run: |
           pin=$(git ls-tree HEAD third_party/gr551x-sdk | awk '{print $3}')
