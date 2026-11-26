@@ -108,6 +108,24 @@ La séquence d'initialisation est exactement celle du T1000-E (EN, VRTC_EN, RESE
 | Détection du câble console | GPIO11 (`0x0b` = UART0 RX) lu en entrée pull-up au démarrage, juste avant l'init de l'UART0 (même fonction que les chaînes « Tracker T1000-A/B [Test] ») | probable |
 | ADC (batterie / capteurs) | **Batterie : MSIO4**, pont diviseur ÷2, activé par GPIO14 (fonction `0x01028DDC` → `0x01034914`). Voies logiques Seeed 0…4 = MSIO0…4 (n° 3 : lumière, LED AON3 éteinte pendant la mesure). Réglages : single-ended, réf. interne 1,28 V, 1 MHz, 20 échantillons, `app_adc_voltage_intern`. | **vérifié** (4198 mV mesurés, batterie pleine) |
 
+### Jauge de batterie du firmware Seeed (LiPo 700 mAh, sûr)
+
+La lecture `0x010349A4` (voie 4 × 2, en mV) passe par `0x01022A1C`, qui convertit la tension en pourcentage avec la
+table de 12 mots à `0x01042F60` (fichier v2.5, décalage `0x40F60`). En dessous de 3200 mV : 0 %. De 3200 à 3590 mV :
+droite de 0 à 20 %. Ensuite, 8 % par intervalle de la table, avec une interpolation linéaire dans chaque intervalle.
+À partir de 4150 mV : 100 %.
+
+| mV | 3200 | 3590 | 3650 | 3700 | 3740 | 3760 | 3795 | 3840 | 3910 | 3980 | 4070 | 4150 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| % Seeed | 0 | 20 | 28 | 36 | 44 | 52 | 60 | 68 | 76 | 84 | 92 | 100 |
+| % MeshCore Open (droite 3000-4200 mV, chimie `lipo`) | 17 | 49 | 54 | 58 | 62 | 63 | 66 | 70 | 76 | 82 | 89 | 96 |
+
+MeshCore n'envoie que des millivolts ; le pourcentage vient de l'appli. MeshCore Open calcule une droite de 3000 à
+4200 mV (`lib/utils/battery_utils.dart`), qui surestime la charge de 25 à 30 points sous 3,7 V : 40 % affichés
+correspondent à environ 3480 mV, soit environ 14 % selon Seeed. Constaté après une semaine d'usage (26/11) : la jauge
+de l'appli tombe vite vers 40 %. Aucune coupure en tension basse repérée dans le firmware Seeed (recherche non
+exhaustive : la valeur 3200 n'apparaît que dans cette conversion).
+
 ## Récupération d'urgence (validée le 2026-11-12)
 
 Si l'application ne répond plus (aucun BLE, bouton sans effet, boucle de redémarrage) :
